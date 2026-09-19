@@ -1,0 +1,8 @@
+{
+  "name": "Remix Aman Sweet",
+  "description": "A digital menu for Aman Sweet restaurant",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}

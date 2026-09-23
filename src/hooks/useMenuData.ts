@@ -18,6 +18,17 @@ export function useMenuData() {
       const parsed = Papa.parse<string[]>(csvText, { skipEmptyLines: true });
       const rows = parsed.data;
 
+      const headers = rows[0] || [];
+      const kgGramColIndex = headers.findIndex((h) =>
+        typeof h === 'string' && /kg\s*\/\s*gram|kg|gram|weight/i.test(h.trim())
+      );
+      const colIndexKgGram = kgGramColIndex !== -1 ? kgGramColIndex : 12;
+
+      const pieceColIndex = headers.findIndex((h) =>
+        typeof h === 'string' && /^piece\b/i.test(h.trim())
+      );
+      const colIndexPiece = pieceColIndex !== -1 ? pieceColIndex : 5;
+
       // Filter out rows where name, nativeName, and seqId are all empty
       const validRows = rows.slice(1).filter((columns) => {
         const name = columns[4] ? columns[4].trim() : '';
@@ -48,13 +59,21 @@ export function useMenuData() {
 
         const youtubeUrl = columns[10] ? columns[10].trim() : '';
         const imageUrlCol = columns[11] ? columns[11].trim() : ((columns as any)['image_url'] || '');
+        const rawKgGram = columns[colIndexKgGram] ? columns[colIndexKgGram].trim() : '';
+        const cleanKgGram =
+          rawKgGram && rawKgGram !== '-' && rawKgGram !== '0' && rawKgGram !== '0.0'
+            ? rawKgGram
+            : undefined;
+
+        const rawPiece = columns[colIndexPiece] ? columns[colIndexPiece].trim() : '';
 
         return {
           id: (index + 1).toString(),
           category: columns[2] ? columns[2].trim() : 'Other',
           nativeName: columns[3] ? columns[3].trim() : '',
           name: columns[4] ? columns[4].trim() : '',
-          portion: columns[5] ? columns[5].trim() : '-',
+          portion: rawPiece || '-',
+          piece: rawPiece,
           priceHalf: priceHalfStr,
           priceFull: priceFullStr,
           price: numericPrice,
@@ -64,7 +83,8 @@ export function useMenuData() {
           gst: 0,
           imageName: seqId,
           image_url: imageUrlCol,
-          youtubeVideo: youtubeUrl
+          youtubeVideo: youtubeUrl,
+          kgGram: cleanKgGram
         };
       });
 

@@ -20,7 +20,8 @@ import {
 } from 'lucide-react';
 import { 
   MenuItem, CartItem, UserProfile, formatPieceUnit, 
-  getItemUnitPrice, hasBothPortions, getCleanItemName, parsePriceNumber 
+  getItemUnitPrice, hasBothPortions, getCleanItemName, parsePriceNumber,
+  openWhatsAppChat
 } from './data';
 import { submitOrderAndDeductStock, getScriptUrl, setScriptUrl } from './services/orderService';
 import headerBgImage from './assets/images/header_3d_sweets_bg_1786805389446.jpg';
@@ -275,14 +276,11 @@ export default function App() {
         }
       }
 
-      const waUrl = phoneParam 
-        ? `https://wa.me/${phoneParam}?text=${encodeURIComponent(text)}`
-        : `https://wa.me/?text=${encodeURIComponent(text)}`;
-      window.open(waUrl, '_blank');
+      openWhatsAppChat(phoneParam, text);
       showNotification('Opening WhatsApp to send offer...');
     } catch (err) {
       console.error('Failed to share owner offer:', err);
-      window.open(`https://wa.me/?text=${encodeURIComponent(text)}`, '_blank');
+      openWhatsAppChat(phoneParam, text);
     }
   };
 
@@ -434,7 +432,6 @@ export default function App() {
     
     const cleanOwnerPhone = (ownerOrderWhatsApp || '917017373371').replace(/\D/g, '');
     const phoneParam = cleanOwnerPhone.length === 10 ? `91${cleanOwnerPhone}` : cleanOwnerPhone;
-    const waUrl = `https://wa.me/${phoneParam}?text=${encodeURIComponent(text)}`;
 
     try {
       if (selectedFile && navigator.canShare && navigator.canShare({ files: [selectedFile] })) {
@@ -447,11 +444,11 @@ export default function App() {
         } catch (error) {
           if ((error as Error).name !== 'AbortError') {
             console.error('Error sharing:', error);
-            window.open(waUrl, '_blank');
+            openWhatsAppChat(phoneParam, text);
           }
         }
       } else {
-        window.open(waUrl, '_blank');
+        openWhatsAppChat(phoneParam, text);
       }
     } finally {
       setCart([]);

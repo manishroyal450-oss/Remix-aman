@@ -117,6 +117,38 @@ export function getCleanItemName(rawName: string): string {
   return rawName.replace(/\s*\((Half|Full)\)\s*$/i, '').trim();
 }
 
+/**
+ * Opens WhatsApp directly via deep-link scheme on mobile (bypassing intermediate browser preview)
+ * or via api.whatsapp.com on desktop browsers.
+ */
+export function openWhatsAppChat(phone: string, text: string): void {
+  const cleanPhone = (phone || '917017373371').replace(/\D/g, '');
+  const phoneParam = cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone;
+  const encodedText = encodeURIComponent(text);
+
+  const isMobile =
+    typeof navigator !== 'undefined' &&
+    /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
+      navigator.userAgent || navigator.vendor || (window as any).opera || ''
+    );
+
+  if (isMobile) {
+    // Direct app deep-link on mobile devices to bypass intermediate "Chat on WhatsApp" browser landing page
+    const deepLinkUrl = phoneParam
+      ? `whatsapp://send?phone=${phoneParam}&text=${encodedText}`
+      : `whatsapp://send?text=${encodedText}`;
+
+    window.location.href = deepLinkUrl;
+  } else {
+    // Desktop fallback to api.whatsapp.com
+    const desktopUrl = phoneParam
+      ? `https://api.whatsapp.com/send?phone=${phoneParam}&text=${encodedText}`
+      : `https://api.whatsapp.com/send?text=${encodedText}`;
+
+    window.open(desktopUrl, '_blank', 'noopener,noreferrer');
+  }
+}
+
 export interface UserProfile {
   fullName: string;
   lastName: string;

@@ -313,14 +313,15 @@ export default function App() {
     }
   };
 
-  const submitOrderToBackend = async () => {
-    if (cart.length === 0) return null;
+  const submitOrderToBackend = async (itemsToSubmit?: CartItem[]) => {
+    const items = itemsToSubmit && itemsToSubmit.length > 0 ? itemsToSubmit : cart;
+    if (items.length === 0) return null;
     setIsSubmittingOrder(true);
-    showNotification('Submitting order to Google Apps Script...');
+    showNotification('Updating stock in Google Sheets...');
 
     // Group quantities by base item clean name so that Apps Script finds the exact menu item in Google Sheet
     const qtyMap: Record<string, number> = {};
-    cart.forEach(item => {
+    items.forEach(item => {
       const cleanName = getCleanItemName(item.name);
       qtyMap[cleanName] = (qtyMap[cleanName] || 0) + (item.quantity || 1);
     });
@@ -330,6 +331,10 @@ export default function App() {
       : 'Customer';
     const customerPhone = userProfile?.contactNumber || '';
 
+    const calculatedTotal = Math.round(
+      items.reduce((sum, item) => sum + getItemUnitPrice(item, item.selectedPortion) * item.quantity, 0)
+    );
+
     const payload = {
       customerName: customerName,
       phone: customerPhone,
@@ -337,7 +342,7 @@ export default function App() {
         name: name,
         qty: qty
       })),
-      totalAmount: Math.round(Number(totalCartPrice || 0))
+      totalAmount: calculatedTotal
     };
 
     console.log('Sending payload to sheet:', payload);
@@ -401,17 +406,21 @@ export default function App() {
     }
   };
 
-  const performShareOrder = async () => {
-    // 1. Calculate remaining stock and submit to Google Apps Script backend
-    await submitOrderToBackend();
+  const performShareOrder = () => {
+    if (cart.length === 0) {
+      showNotification('Your cart is empty!');
+      return;
+    }
+
+    const cartSnapshot = [...cart];
 
     const qtyMap: Record<string, number> = {};
-    cart.forEach(item => {
+    cartSnapshot.forEach(item => {
       const cleanName = getCleanItemName(item.name);
       qtyMap[cleanName] = (qtyMap[cleanName] || 0) + (item.quantity || 1);
     });
 
-    const message = cart.map(item => {
+    const message = cartSnapshot.map(item => {
       const cleanName = getCleanItemName(item.name);
       const orderedQty = qtyMap[cleanName] || item.quantity;
       const currentStock = typeof item.stock === 'number' ? item.stock : 100;
@@ -433,28 +442,32 @@ export default function App() {
     const cleanOwnerPhone = (ownerOrderWhatsApp || '917017373371').replace(/\D/g, '');
     const phoneParam = cleanOwnerPhone.length === 10 ? `91${cleanOwnerPhone}` : cleanOwnerPhone;
 
-    try {
-      if (selectedFile && navigator.canShare && navigator.canShare({ files: [selectedFile] })) {
-        try {
-          await navigator.share({
-            files: [selectedFile],
-            text: text,
-            title: 'Aman Sweet Order'
-          });
-        } catch (error) {
-          if ((error as Error).name !== 'AbortError') {
-            console.error('Error sharing:', error);
-            openWhatsAppChat(phoneParam, text);
-          }
+    // 1. Immediately launch WhatsApp within active user click gesture
+    // On laptop: instantly opens https://web.whatsapp.com/send?phone=... without popup blocker
+    // On mobile: instantly deep-links to native WhatsApp app
+    if (selectedFile && navigator.canShare && navigator.canShare({ files: [selectedFile] })) {
+      navigator.share({
+        files: [selectedFile],
+        text: text,
+        title: 'Aman Sweet Order'
+      }).catch((error) => {
+        if ((error as Error).name !== 'AbortError') {
+          openWhatsAppChat(phoneParam, text);
         }
-      } else {
-        openWhatsAppChat(phoneParam, text);
-      }
-    } finally {
-      setCart([]);
-      setSelectedFile(null);
-      showNotification('Order placed & sent to Owner (+91 70173 73371)!');
+      });
+    } else {
+      openWhatsAppChat(phoneParam, text);
     }
+
+    // 2. Clear cart and notify user
+    setCart([]);
+    setSelectedFile(null);
+    showNotification('Order placed & sent to Owner (+91 70173 73371)!');
+
+    // 3. Submit order & deduct stock in Google Sheets in parallel
+    submitOrderToBackend(cartSnapshot).catch(err => {
+      console.warn('Background sync notice:', err);
+    });
   };
 
   const handleDirectOrderSubmit = async () => {

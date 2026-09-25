@@ -1,6 +1,5 @@
-import { useRef, RefObject } from 'react';
 import { CartItem, UserProfile, formatPieceUnit, getItemUnitPrice } from '../data';
-import { ShoppingCart, Trash2, Plus, Minus, MessageCircle, Paperclip, User, ArrowRight } from 'lucide-react';
+import { ShoppingCart, Trash2, Plus, Minus, MessageCircle, User, ArrowRight } from 'lucide-react';
 
 interface CartSectionProps {
   cart: CartItem[];
@@ -10,8 +9,8 @@ interface CartSectionProps {
   clearCart: () => void;
   totalCartPrice: number;
   totalCartCount: number;
-  selectedFile: File | null;
-  setSelectedFile: (file: File | null) => void;
+  selectedFile?: File | null;
+  setSelectedFile?: (file: File | null) => void;
   onShareWhatsApp: () => void;
   onGoToHome: () => void;
   userProfile: UserProfile | null;
@@ -28,8 +27,6 @@ export default function CartSection({
   clearCart,
   totalCartPrice,
   totalCartCount,
-  selectedFile,
-  setSelectedFile,
   onShareWhatsApp,
   onGoToHome,
   userProfile,
@@ -37,7 +34,6 @@ export default function CartSection({
   isSubmitting = false,
   onSubmitDirectOrder,
 }: CartSectionProps) {
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   return (
     <div className="max-w-xl mx-auto px-4 py-6">
@@ -200,24 +196,6 @@ export default function CartSection({
             <div className="pt-2 border-t border-gray-100 flex justify-between items-center">
               <span className="font-bold text-gray-800">Total Amount</span>
               <span className="font-bold text-lg text-teal-700">₹{totalCartPrice}</span>
-            </div>
-          </div>
-
-          {/* Attachment Box */}
-          <div
-            onClick={() => fileInputRef.current?.click()}
-            className="p-3.5 border-2 border-dashed border-gray-200 rounded-xl text-center cursor-pointer hover:border-teal-500 bg-white transition"
-          >
-            <input
-              type="file"
-              ref={fileInputRef}
-              onChange={(e) => setSelectedFile(e.target.files?.[0] || null)}
-              accept="image/*"
-              className="hidden"
-            />
-            <div className="flex items-center justify-center gap-2 text-xs text-gray-600 font-medium">
-              <Paperclip size={15} className="text-gray-400" />
-              <span>{selectedFile ? `Attached: ${selectedFile.name}` : 'Attach Payment Screenshot / Photo (Optional)'}</span>
             </div>
           </div>
 

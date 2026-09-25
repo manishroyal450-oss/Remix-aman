@@ -146,8 +146,9 @@ export function openWhatsAppChat(phone: string, text: string): void {
       : `https://web.whatsapp.com/send?text=${encodedText}`;
 
     try {
-      const win = window.open(desktopUrl, '_blank', 'noopener,noreferrer');
-      // If browser popup blocker prevented new tab, navigate current window to WhatsApp Web directly
+      // '_blank' ki jagah 'whatsapp_tab' use karein
+      const win = window.open(desktopUrl, 'whatsapp_tab');
+      // If browser popup blocker prevented opening the tab, navigate current window directly
       if (!win || win.closed || typeof win.closed === 'undefined') {
         window.location.href = desktopUrl;
       }

@@ -119,7 +119,7 @@ export function getCleanItemName(rawName: string): string {
 
 /**
  * Opens WhatsApp directly via deep-link scheme on mobile (bypassing intermediate browser preview)
- * or via api.whatsapp.com on desktop browsers.
+ * or directly via WhatsApp Web (web.whatsapp.com) on desktop/laptop.
  */
 export function openWhatsAppChat(phone: string, text: string): void {
   const cleanPhone = (phone || '917017373371').replace(/\D/g, '');
@@ -140,10 +140,10 @@ export function openWhatsAppChat(phone: string, text: string): void {
 
     window.location.href = deepLinkUrl;
   } else {
-    // Desktop fallback to api.whatsapp.com
+    // Direct WhatsApp Web on desktop/laptop to bypass intermediate "Continue to WhatsApp Web" landing page
     const desktopUrl = phoneParam
-      ? `https://api.whatsapp.com/send?phone=${phoneParam}&text=${encodedText}`
-      : `https://api.whatsapp.com/send?text=${encodedText}`;
+      ? `https://web.whatsapp.com/send?phone=${phoneParam}&text=${encodedText}`
+      : `https://web.whatsapp.com/send?text=${encodedText}`;
 
     window.open(desktopUrl, '_blank', 'noopener,noreferrer');
   }

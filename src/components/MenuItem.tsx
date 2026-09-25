@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ShoppingCart, Lock, Check } from 'lucide-react';
-import { MenuItem, formatPieceUnit } from '../data';
+import { MenuItem, formatPieceUnit, hasBothPortions, parsePriceNumber } from '../data';
 
 interface Props {
   item: MenuItem;
@@ -17,35 +17,19 @@ const MenuItemComponent: React.FC<Props> = ({
   onAddToOwnerPrivacy,
   isInOwnerPrivacy = false 
 }) => {
-  const hasHalf = Boolean(
-    item.priceHalf &&
-    item.priceHalf.trim() !== '' &&
-    item.priceHalf.trim() !== '-' &&
-    !isNaN(parseFloat(item.priceHalf.replace(/[^\d.]/g, '')))
-  );
+  const bothPortions = hasBothPortions(item);
+  const halfVal = parsePriceNumber(item.priceHalf);
+  const fullVal = parsePriceNumber(item.priceFull);
+  const hasHalf = halfVal > 0;
+  const hasFull = fullVal > 0;
 
-  const hasFull = Boolean(
-    item.priceFull &&
-    item.priceFull.trim() !== '' &&
-    item.priceFull.trim() !== '-' &&
-    !isNaN(parseFloat(item.priceFull.replace(/[^\d.]/g, '')))
-  );
-
-  const [selectedPortion, setSelectedPortion] = useState<'Half' | 'Full'>(() => {
-    if (hasHalf && hasFull) return 'Half';
-    if (hasFull) return 'Full';
-    return 'Half';
-  });
+  const [selectedPortion, setSelectedPortion] = useState<'Half' | 'Full'>('Half');
 
   useEffect(() => {
-    if (hasHalf && hasFull) {
-      setSelectedPortion('Half');
-    } else if (hasFull) {
-      setSelectedPortion('Full');
-    } else if (hasHalf) {
+    if (bothPortions) {
       setSelectedPortion('Half');
     }
-  }, [item.id, hasHalf, hasFull]);
+  }, [item.id, bothPortions]);
 
   const pieceUnit = formatPieceUnit(item.piece || item.portion);
 
@@ -196,7 +180,7 @@ const MenuItemComponent: React.FC<Props> = ({
       </div>
       
       <div className="mt-3 pt-3 border-t border-gray-100 flex flex-col gap-2.5">
-        {hasHalf && hasFull ? (
+        {bothPortions ? (
           <div className="space-y-1">
             <div className="flex items-center justify-between px-1 py-1">
               <label 
@@ -255,7 +239,7 @@ const MenuItemComponent: React.FC<Props> = ({
           </div>
         ) : hasHalf ? (
           <div className="flex items-center justify-between px-1 text-xs py-0.5">
-            <span className="text-gray-500 font-medium">Half</span>
+            <span className="text-gray-500 font-medium">Price</span>
             <div className="text-right">
               <div className="text-sm font-bold text-gray-900">
                 ₹{item.priceHalf}<span className="text-xs font-semibold text-gray-700">{pieceUnit}</span>
@@ -271,7 +255,7 @@ const MenuItemComponent: React.FC<Props> = ({
           <div className="flex items-center justify-between px-1 text-xs py-0.5">
             <span className="text-gray-500 font-medium">Price</span>
             <div className="text-right">
-              <div className="text-sm font-bold text-red-600">N/A</div>
+              <div className="text-sm font-bold text-red-600">₹{item.price || 0}</div>
               {item.kgGram && (
                 <div className="text-[11px] font-semibold text-gray-500 mt-0.5">
                   {item.kgGram}
@@ -299,7 +283,7 @@ const MenuItemComponent: React.FC<Props> = ({
           aria-label={`Add ${item.name} to cart`}
           disabled={item.stock === 0}
           onClick={() => {
-            const chosen = hasHalf && hasFull ? selectedPortion : (hasFull ? 'Full' : hasHalf ? 'Half' : undefined);
+            const chosen = bothPortions ? selectedPortion : undefined;
             addToCart(item, chosen);
           }}
         >

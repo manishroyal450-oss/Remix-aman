@@ -1,5 +1,5 @@
 import { useRef, RefObject } from 'react';
-import { CartItem, UserProfile, formatPieceUnit } from '../data';
+import { CartItem, UserProfile, formatPieceUnit, getItemUnitPrice } from '../data';
 import { ShoppingCart, Trash2, Plus, Minus, MessageCircle, Paperclip, User, ArrowRight } from 'lucide-react';
 
 interface CartSectionProps {
@@ -114,11 +114,7 @@ export default function CartSection({
           {/* Cart items list */}
           <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 divide-y divide-gray-100">
             {cart.map(item => {
-              const unitPrice = typeof item.unitPrice === 'number' && item.unitPrice > 0
-                ? item.unitPrice
-                : typeof item.price === 'number' && item.price > 0
-                ? item.price
-                : parseInt((item.selectedPortion === 'Half' ? item.priceHalf : item.priceFull) || item.priceFull || item.priceHalf || '0');
+              const unitPrice = getItemUnitPrice(item, item.selectedPortion);
               const itemTotal = unitPrice * item.quantity;
               return (
                 <div key={item.id} className="py-3 flex items-center justify-between gap-3">

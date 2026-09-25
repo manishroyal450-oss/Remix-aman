@@ -1,5 +1,5 @@
 import React from 'react';
-import { MenuItem, CartItem, formatPieceUnit } from '../data';
+import { MenuItem, CartItem, formatPieceUnit, getItemUnitPrice, hasBothPortions } from '../data';
 import { ItemImage } from './ItemImage';
 import { Plus, Minus, Star, Play, Sparkles } from 'lucide-react';
 
@@ -54,16 +54,15 @@ export const HorizontalFeaturedList: React.FC<HorizontalFeaturedListProps> = ({
       <div className="flex gap-3.5 overflow-x-auto pb-4 pt-1 px-1 scrollbar-none snap-x snap-mandatory">
         {items.map((item) => {
           const pieceUnit = formatPieceUnit(item.piece || item.portion);
-          const hasHalf = !!(item.priceHalf && item.priceHalf !== '-');
-          const hasFull = !!(item.priceFull && item.priceFull !== '-');
-          const defaultPortion: 'Half' | 'Full' | undefined = hasFull ? 'Full' : (hasHalf ? 'Half' : undefined);
+          const bothPortions = hasBothPortions(item);
+          const defaultPortion: 'Half' | 'Full' | undefined = bothPortions ? 'Half' : undefined;
 
           // Check if item is in cart
-          const cartItem = cart.find(c => c.id === item.id);
-          const inCartCount = cartItem ? cartItem.quantity : 0;
+          const cartItem = cart.find(c => c.id === item.id || c.id.startsWith(`${item.id}-`));
+          const inCartCount = cart.filter(c => c.id === item.id || c.id.startsWith(`${item.id}-`)).reduce((sum, c) => sum + c.quantity, 0);
 
           // Price display
-          const displayPrice = hasFull ? item.priceFull : (hasHalf ? item.priceHalf : item.price);
+          const displayPrice = getItemUnitPrice(item, defaultPortion);
           const videoUrl = getValidYoutubeUrl(item.youtubeVideo);
 
           return (

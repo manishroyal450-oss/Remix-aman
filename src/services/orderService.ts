@@ -1,4 +1,4 @@
-import { CartItem } from '../data';
+import { CartItem, getItemUnitPrice, getCleanItemName } from '../data';
 
 // Default Google Apps Script Web App URL for Checkout / Order Submission
 export const SCRIPT_URL =
@@ -44,6 +44,8 @@ export interface OrderItemPayload {
 }
 
 export interface OrderSubmissionPayload {
+  customerName?: string;
+  phone?: string;
   items: OrderItemPayload[];
   totalAmount: number;
 }
@@ -55,50 +57,38 @@ export interface OrderSubmissionResult {
 }
 
 /**
- * Helper to get clean unit price for a cart item
- */
-function getItemUnitPrice(item: CartItem): number {
-  if (typeof item.price === 'number' && !isNaN(item.price) && item.price > 0) {
-    return item.price;
-  }
-  const fullVal = item.priceFull ? parseFloat(item.priceFull.replace(/[^\d.]/g, '')) : NaN;
-  if (!isNaN(fullVal) && fullVal > 0) return fullVal;
-  const halfVal = item.priceHalf ? parseFloat(item.priceHalf.replace(/[^\d.]/g, '')) : NaN;
-  if (!isNaN(halfVal) && halfVal > 0) return halfVal;
-  return 0;
-}
-
-/**
  * Submits order to Google Apps Script Web App on checkout / order complete.
- * Sends exact JSON format:
- * {
- *   "items": [
- *     { "name": "Kheer", "qty": 1 },
- *     { "name": "Gulab Jamun", "qty": 2 }
- *   ],
- *   "totalAmount": 80
- * }
- * Note: mode: 'no-cors' is completely removed so the payload body reaches Apps Script properly.
  */
 export async function submitOrderAndDeductStock(
   items: CartItem[],
   customUrl?: string,
-  providedTotal?: number
+  providedTotal?: number,
+  customerName?: string,
+  phone?: string
 ): Promise<OrderSubmissionResult> {
   const TARGET_URL =
     customUrl && customUrl.trim() && !customUrl.includes('AKfycbyf2i7_script_webapp_deployment_id')
       ? customUrl.trim()
       : SCRIPT_URL;
 
+  // Aggregate quantities by clean base item name
+  const qtyMap: Record<string, number> = {};
+  for (const item of items) {
+    const cleanName = getCleanItemName(item.name || (item as any).title || (item as any).itemName || 'Item');
+    qtyMap[cleanName] = (qtyMap[cleanName] || 0) + Number(item.quantity || (item as any).qty || 1);
+  }
+
   const payload: OrderSubmissionPayload = {
-    items: items.map((item) => ({
-      name: item.name || (item as any).title || (item as any).itemName || 'Item',
-      qty: Number(item.quantity || (item as any).qty || 1),
+    customerName: customerName || 'Customer',
+    phone: phone || '',
+    items: Object.entries(qtyMap).map(([name, qty]) => ({
+      name,
+      qty
     })),
-    totalAmount: Number(
+    totalAmount: Math.round(
       typeof providedTotal === 'number' && providedTotal > 0
         ? providedTotal
-        : items.reduce((sum, item) => sum + getItemUnitPrice(item) * item.quantity, 0)
+        : items.reduce((sum, item) => sum + getItemUnitPrice(item, item.selectedPortion) * item.quantity, 0)
     ),
   };
 
@@ -107,18 +97,16 @@ export async function submitOrderAndDeductStock(
   // Compute remaining stock for local UI instant synchronization
   const remainingStockMap: Record<string, number> = {};
   for (const item of items) {
+    const cleanName = getCleanItemName(item.name);
+    const orderedQty = qtyMap[cleanName] || item.quantity;
     const currentStock = typeof item.stock === 'number' ? item.stock : 100;
-    const remainingStock = Math.max(0, currentStock - item.quantity);
+    const remainingStock = Math.max(0, currentStock - orderedQty);
     remainingStockMap[item.id] = remainingStock;
     remainingStockMap[item.name] = remainingStock;
+    remainingStockMap[cleanName] = remainingStock;
   }
 
   try {
-    // mode: 'no-cors' is required for Google Apps Script Web Apps in browsers.
-    // Without 'no-cors', the 302 redirect from script.google.com to script.googleusercontent.com
-    // triggers a browser CORS violation ("TypeError: Failed to fetch").
-    // With 'no-cors' and 'text/plain;charset=utf-8', the browser sends the complete payload body
-    // and successfully completes without throwing "Failed to fetch".
     await fetch(TARGET_URL, {
       method: 'POST',
       mode: 'no-cors',

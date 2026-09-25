@@ -64,6 +64,59 @@ export interface CartItem extends MenuItem {
   unitPrice?: number;
 }
 
+export function parsePriceNumber(val?: string | number): number {
+  if (typeof val === 'number') {
+    return isNaN(val) || val < 0 ? 0 : val;
+  }
+  if (!val || typeof val !== 'string') return 0;
+  const cleaned = val.replace(/[^\d.]/g, '');
+  if (!cleaned) return 0;
+  const parsed = parseFloat(cleaned);
+  return isNaN(parsed) || parsed < 0 ? 0 : parsed;
+}
+
+export function getItemUnitPrice(item: MenuItem | CartItem, portion?: 'Half' | 'Full' | string): number {
+  // If cart item already has a valid unitPrice, use it
+  if ('unitPrice' in item && typeof item.unitPrice === 'number' && !isNaN(item.unitPrice) && item.unitPrice > 0) {
+    return item.unitPrice;
+  }
+
+  const effPortion = portion || ('selectedPortion' in item ? item.selectedPortion : undefined);
+  const halfPrice = parsePriceNumber(item.priceHalf);
+  const fullPrice = parsePriceNumber(item.priceFull);
+
+  if (effPortion === 'Half' && halfPrice > 0) {
+    return halfPrice;
+  }
+  if (effPortion === 'Full' && fullPrice > 0) {
+    return fullPrice;
+  }
+
+  // Fallbacks: if requested portion was not found or 0
+  if (halfPrice > 0 && fullPrice === 0) return halfPrice;
+  if (fullPrice > 0 && halfPrice === 0) return fullPrice;
+  if (fullPrice > 0) return fullPrice;
+  if (halfPrice > 0) return halfPrice;
+
+  // General item.price
+  if (typeof item.price === 'number' && !isNaN(item.price) && item.price > 0) {
+    return item.price;
+  }
+
+  return 0;
+}
+
+export function hasBothPortions(item: MenuItem | CartItem): boolean {
+  const half = parsePriceNumber(item.priceHalf);
+  const full = parsePriceNumber(item.priceFull);
+  return half > 0 && full > 0;
+}
+
+export function getCleanItemName(rawName: string): string {
+  if (!rawName) return '';
+  return rawName.replace(/\s*\((Half|Full)\)\s*$/i, '').trim();
+}
+
 export interface UserProfile {
   fullName: string;
   lastName: string;

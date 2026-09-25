@@ -18,7 +18,10 @@ import {
   Paperclip, Plus, Minus, Tag, Send, MapPin, Sparkles, ChevronDown, Percent,
   Play, Video, Download, Smartphone
 } from 'lucide-react';
-import { MenuItem, CartItem, UserProfile, formatPieceUnit } from './data';
+import { 
+  MenuItem, CartItem, UserProfile, formatPieceUnit, 
+  getItemUnitPrice, hasBothPortions, getCleanItemName, parsePriceNumber 
+} from './data';
 import { submitOrderAndDeductStock, getScriptUrl, setScriptUrl } from './services/orderService';
 import headerBgImage from './assets/images/header_3d_sweets_bg_1786805389446.jpg';
 import 'swiper/element/bundle';
@@ -127,46 +130,22 @@ export default function App() {
     }
   };
 
-  const getItemUnitPrice = (item: CartItem | MenuItem, portion?: 'Half' | 'Full'): number => {
-    if ('unitPrice' in item && typeof item.unitPrice === 'number' && item.unitPrice > 0) {
-      return item.unitPrice;
-    }
-    const effPortion = portion || ('selectedPortion' in item ? item.selectedPortion : undefined);
-    if (effPortion === 'Half' && item.priceHalf) {
-      const p = parseFloat(item.priceHalf.replace(/[^\d.]/g, ''));
-      if (!isNaN(p) && p > 0) return p;
-    }
-    if (effPortion === 'Full' && item.priceFull) {
-      const p = parseFloat(item.priceFull.replace(/[^\d.]/g, ''));
-      if (!isNaN(p) && p > 0) return p;
-    }
-    if (typeof item.price === 'number' && item.price > 0) {
-      return item.price;
-    }
-    const fullP = item.priceFull ? parseFloat(item.priceFull.replace(/[^\d.]/g, '')) : NaN;
-    if (!isNaN(fullP) && fullP > 0) return fullP;
-    const halfP = item.priceHalf ? parseFloat(item.priceHalf.replace(/[^\d.]/g, '')) : NaN;
-    if (!isNaN(halfP) && halfP > 0) return halfP;
-    return 0;
-  };
-
   const addToCart = (item: MenuItem | CartItem, portion?: 'Half' | 'Full') => {
-    const hasHalf = Boolean(item.priceHalf && item.priceHalf !== '-' && item.priceHalf.trim() !== '');
-    const hasFull = Boolean(item.priceFull && item.priceFull !== '-' && item.priceFull.trim() !== '');
-    const chosenPortion: 'Half' | 'Full' | undefined = 
-      portion || 
-      ('selectedPortion' in item && item.selectedPortion ? (item.selectedPortion as 'Half' | 'Full') : undefined) ||
-      (hasHalf && hasFull ? 'Half' : hasHalf ? 'Half' : hasFull ? 'Full' : undefined);
+    const bothPortions = hasBothPortions(item);
+    // Only items with BOTH Half and Full prices have portion variations
+    const chosenPortion: 'Half' | 'Full' | undefined = bothPortions
+      ? (portion || ('selectedPortion' in item && (item.selectedPortion === 'Half' || item.selectedPortion === 'Full') ? (item.selectedPortion as 'Half' | 'Full') : 'Half'))
+      : undefined;
 
     const baseId = item.id.split('-')[0];
-    const cartItemId = chosenPortion ? `${baseId}-${chosenPortion}` : item.id;
+    const cartItemId = chosenPortion ? `${baseId}-${chosenPortion}` : baseId;
     const unitPrice = getItemUnitPrice(item, chosenPortion);
 
     setCart(prev => {
-      const existing = prev.find(i => i.id === cartItemId || i.id === item.id);
+      const existing = prev.find(i => i.id === cartItemId);
       if (existing) {
-        showNotification(`${item.name}${chosenPortion ? ` (${chosenPortion})` : ''} added to cart`);
-        return prev.map(i => i.id === existing.id ? { ...i, quantity: i.quantity + 1 } : i);
+        showNotification(`${item.name}${chosenPortion ? ` (${chosenPortion})` : ''} quantity updated in cart`);
+        return prev.map(i => i.id === cartItemId ? { ...i, quantity: i.quantity + 1, unitPrice, price: unitPrice } : i);
       }
       showNotification(`${item.name}${chosenPortion ? ` (${chosenPortion})` : ''} added to cart`);
       return [
@@ -341,19 +320,33 @@ export default function App() {
     setIsSubmittingOrder(true);
     showNotification('Submitting order to Google Apps Script...');
 
+    // Group quantities by base item clean name so that Apps Script finds the exact menu item in Google Sheet
+    const qtyMap: Record<string, number> = {};
+    cart.forEach(item => {
+      const cleanName = getCleanItemName(item.name);
+      qtyMap[cleanName] = (qtyMap[cleanName] || 0) + (item.quantity || 1);
+    });
+
+    const customerName = userProfile?.fullName
+      ? `${userProfile.fullName} ${userProfile.lastName || ''}`.trim()
+      : 'Customer';
+    const customerPhone = userProfile?.contactNumber || '';
+
+    const payload = {
+      customerName: customerName,
+      phone: customerPhone,
+      items: Object.entries(qtyMap).map(([name, qty]) => ({
+        name: name,
+        qty: qty
+      })),
+      totalAmount: Math.round(Number(totalCartPrice || 0))
+    };
+
+    console.log('Sending payload to sheet:', payload);
+
     try {
       const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwuCsQgq4B08VrJVO1xw3PkjjNYSJYwNZqYybUAPutgRdlRcwnRo4sau3w2axopNkr0ZQ/exec';
       const targetUrl = customScriptUrl && customScriptUrl.trim() ? customScriptUrl.trim() : SCRIPT_URL;
-
-      const payload = {
-        items: cart.map(item => ({
-          name: item.selectedPortion ? `${item.name} (${item.selectedPortion})` : (item.name || (item as any).title || (item as any).itemName),
-          qty: Number(item.quantity || (item as any).qty || 1)
-        })),
-        totalAmount: Number(totalCartPrice || 0)
-      };
-
-      console.log('Sending payload to sheet:', payload);
 
       // In browsers, Google Apps Script Web Apps return a 302 redirect to script.googleusercontent.com
       // which does not send CORS headers. Using mode: 'no-cors' with 'text/plain;charset=utf-8' allows
@@ -369,28 +362,39 @@ export default function App() {
 
       // Deduct stock locally for immediate visual update
       const stockMap: Record<string, number> = {};
-      cart.forEach(item => {
-        const baseId = item.id.split('-')[0];
-        const currentStock = typeof item.stock === 'number' ? item.stock : 100;
-        const remaining = Math.max(0, currentStock - item.quantity);
-        stockMap[baseId] = remaining;
-        stockMap[item.id] = remaining;
-        stockMap[item.name] = remaining;
+      menuData.forEach(menuItem => {
+        const cleanName = getCleanItemName(menuItem.name);
+        const orderedQty = qtyMap[cleanName] || qtyMap[menuItem.name.trim()] || 0;
+        if (orderedQty > 0) {
+          const currentStock = typeof menuItem.stock === 'number' ? menuItem.stock : 100;
+          const remaining = Math.max(0, currentStock - orderedQty);
+          stockMap[menuItem.id] = remaining;
+          stockMap[menuItem.name] = remaining;
+          stockMap[cleanName] = remaining;
+        }
       });
       deductStockLocally(stockMap);
+
+      // Trigger background sync to confirm with Google Sheets
+      setTimeout(() => {
+        refresh();
+      }, 2000);
 
       return { success: true, payload };
     } catch (err) {
       console.warn('Communication notice with Google Apps Script:', err);
       // Still update local stock so user order is never blocked
       const stockMap: Record<string, number> = {};
-      cart.forEach(item => {
-        const baseId = item.id.split('-')[0];
-        const currentStock = typeof item.stock === 'number' ? item.stock : 100;
-        const remaining = Math.max(0, currentStock - item.quantity);
-        stockMap[baseId] = remaining;
-        stockMap[item.id] = remaining;
-        stockMap[item.name] = remaining;
+      menuData.forEach(menuItem => {
+        const cleanName = getCleanItemName(menuItem.name);
+        const orderedQty = qtyMap[cleanName] || qtyMap[menuItem.name.trim()] || 0;
+        if (orderedQty > 0) {
+          const currentStock = typeof menuItem.stock === 'number' ? menuItem.stock : 100;
+          const remaining = Math.max(0, currentStock - orderedQty);
+          stockMap[menuItem.id] = remaining;
+          stockMap[menuItem.name] = remaining;
+          stockMap[cleanName] = remaining;
+        }
       });
       deductStockLocally(stockMap);
       return { success: true };
@@ -403,10 +407,18 @@ export default function App() {
     // 1. Calculate remaining stock and submit to Google Apps Script backend
     await submitOrderToBackend();
 
+    const qtyMap: Record<string, number> = {};
+    cart.forEach(item => {
+      const cleanName = getCleanItemName(item.name);
+      qtyMap[cleanName] = (qtyMap[cleanName] || 0) + (item.quantity || 1);
+    });
+
     const message = cart.map(item => {
+      const cleanName = getCleanItemName(item.name);
+      const orderedQty = qtyMap[cleanName] || item.quantity;
       const currentStock = typeof item.stock === 'number' ? item.stock : 100;
-      const remainingStock = Math.max(0, currentStock - item.quantity);
-      const unit = getItemUnitPrice(item);
+      const remainingStock = Math.max(0, currentStock - orderedQty);
+      const unit = getItemUnitPrice(item, item.selectedPortion);
       const portionStr = item.selectedPortion ? ` (${item.selectedPortion})` : '';
       const kgGramStr = item.kgGram ? ` [${item.kgGram}]` : '';
       const pieceStr = formatPieceUnit(item.piece || item.portion);
@@ -416,7 +428,7 @@ export default function App() {
     
     let text = `*Aman Sweet* - Order Request:\n\n${message}\n\n*Total: ₹${total}*`;
     if (userProfile?.fullName) {
-      text += `\n\n*Customer Details:*\nName: ${userProfile.fullName} ${userProfile.lastName}\nContact: ${userProfile.contactNumber}\nAddress: ${userProfile.address}\nPin Code: ${userProfile.pinCode}`;
+      text += `\n\n*Customer Details:*\nName: ${userProfile.fullName} ${userProfile.lastName || ''}\nContact: ${userProfile.contactNumber}\nAddress: ${userProfile.address}\nPin Code: ${userProfile.pinCode}`;
     }
     text += `\n\n_Thank you for ordering with us!_`;
     
@@ -477,7 +489,7 @@ export default function App() {
   }
 
   const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
-  const totalCartPrice = cart.reduce((sum, item) => sum + (getItemUnitPrice(item) * item.quantity), 0);
+  const totalCartPrice = cart.reduce((sum, item) => sum + (getItemUnitPrice(item, item.selectedPortion) * item.quantity), 0);
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">

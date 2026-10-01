@@ -17,7 +17,7 @@ export const PromoBanner: React.FC = () => {
             Special Deals Everyday
           </div>
           <h2 className="text-xl sm:text-2xl font-black tracking-tight leading-tight">
-            FREE DELIVERY <span className="text-amber-200">above ₹199</span>
+            FREE DELIVERY
           </h2>
           <p className="text-xs sm:text-sm text-white/90 font-medium max-w-md">
             Fresh handcrafted traditional Indian sweets & hot fast food delivered straight to your door!

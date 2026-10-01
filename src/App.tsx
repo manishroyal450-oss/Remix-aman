@@ -82,7 +82,16 @@ export default function App() {
     setTimeout(() => setNotification(null), 3000);
   };
 
-  const baseCategories = Array.from(new Set(menuData.map(item => item.category)));
+  const rawCategories: string[] = Array.from(new Set(menuData.map(item => item.category))).filter((c): c is string => Boolean(c && typeof c === 'string'));
+  if (!rawCategories.some(c => c.toLowerCase() === 'bakery')) {
+    const sweetsIndex = rawCategories.findIndex(c => c.toLowerCase() === 'sweets');
+    if (sweetsIndex !== -1) {
+      rawCategories.splice(sweetsIndex + 1, 0, 'Bakery');
+    } else {
+      rawCategories.push('Bakery');
+    }
+  }
+  const baseCategories = rawCategories;
   const hasAnyVideo = menuData.some(item => Boolean(item.youtubeVideo && item.youtubeVideo.trim() !== '' && item.youtubeVideo.trim() !== '-'));
   const categories = hasAnyVideo ? ['All', 'YouTube Video', ...baseCategories] : ['All', ...baseCategories];
   const [quickFilter, setQuickFilter] = useState<'all' | 'offers' | 'under100' | 'video'>('all');
@@ -100,7 +109,8 @@ export default function App() {
     }
 
     const matchesSearch = item.name.toLowerCase().includes(searchQuery.toLowerCase()) || 
-                          item.nativeName.toLowerCase().includes(searchQuery.toLowerCase());
+                          item.nativeName.toLowerCase().includes(searchQuery.toLowerCase()) ||
+                          item.category.toLowerCase().includes(searchQuery.toLowerCase());
     
     let matchesQuick = true;
     if (quickFilter === 'offers') {

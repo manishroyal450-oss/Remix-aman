@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import Papa from 'papaparse';
-import { MenuItem } from '../data';
+import { MenuItem, DEFAULT_BAKERY_ITEMS } from '../data';
 
 const SHEET_ID = '1otN1s4qs_QfF7jfK4uy-uTFOKhflZUXao7vTLrzQBK8';
 const SHEET_NAME = 'Restaurant Menu';
@@ -67,9 +67,12 @@ export function useMenuData() {
 
         const rawPiece = columns[colIndexPiece] ? columns[colIndexPiece].trim() : '';
 
+        const rawCategory = columns[2] ? columns[2].trim() : 'Other';
+        const normalizedCategory = rawCategory.toLowerCase() === 'bakery' ? 'Bakery' : rawCategory;
+
         return {
           id: (index + 1).toString(),
-          category: columns[2] ? columns[2].trim() : 'Other',
+          category: normalizedCategory,
           nativeName: columns[3] ? columns[3].trim() : '',
           name: columns[4] ? columns[4].trim() : '',
           portion: rawPiece || '-',
@@ -88,7 +91,15 @@ export function useMenuData() {
         };
       });
 
-      setData(formattedData);
+      // Ensure Bakery items exist so the new Bakery category is ready and browsable
+      const hasBakeryInSheet = formattedData.some(
+        (item) => item.category.trim().toLowerCase() === 'bakery'
+      );
+      const finalData = hasBakeryInSheet
+        ? formattedData
+        : [...formattedData, ...DEFAULT_BAKERY_ITEMS];
+
+      setData(finalData);
       setLoading(false);
     } catch (err) {
       setError('Failed to fetch data');

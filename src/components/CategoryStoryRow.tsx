@@ -1,7 +1,7 @@
 import React from 'react';
 import { MenuItem } from '../data';
 import { ItemImage } from './ItemImage';
-import { Utensils, Play } from 'lucide-react';
+import { Utensils, Play, Croissant } from 'lucide-react';
 
 interface CategoryStoryRowProps {
   categories: string[];
@@ -70,6 +70,10 @@ export const CategoryStoryRow: React.FC<CategoryStoryRowProps> = ({
                 ) : isVideoCat ? (
                   <div className="w-full h-full rounded-full bg-red-600 flex items-center justify-center text-white">
                     <Play size={20} className="fill-current ml-0.5" />
+                  </div>
+                ) : cat.toLowerCase() === 'bakery' ? (
+                  <div className="w-full h-full rounded-full bg-amber-50 flex items-center justify-center text-amber-700">
+                    <Croissant size={22} />
                   </div>
                 ) : (
                   <div className="w-full h-full rounded-full bg-red-50 flex items-center justify-center text-red-600">

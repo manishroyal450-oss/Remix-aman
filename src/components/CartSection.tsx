@@ -1,4 +1,4 @@
-import { CartItem, UserProfile, formatPieceUnit, getItemUnitPrice } from '../data';
+import { CartItem, UserProfile, formatPieceUnit, getItemUnitPrice, DeliveryConfig } from '../data';
 import { ShoppingCart, Trash2, Plus, Minus, MessageCircle, User, ArrowRight } from 'lucide-react';
 
 interface CartSectionProps {
@@ -17,6 +17,7 @@ interface CartSectionProps {
   onGoToProfile: () => void;
   isSubmitting?: boolean;
   onSubmitDirectOrder?: () => void;
+  deliveryConfig?: DeliveryConfig;
 }
 
 export default function CartSection({
@@ -33,7 +34,14 @@ export default function CartSection({
   onGoToProfile,
   isSubmitting = false,
   onSubmitDirectOrder,
+  deliveryConfig,
 }: CartSectionProps) {
+  const freeThreshold = deliveryConfig?.freeDeliveryThreshold ?? 300;
+  const rawDeliveryFee = deliveryConfig?.deliveryFee ?? 40;
+  const isFreeDelivery = totalCartPrice >= freeThreshold;
+  const actualDeliveryCharge = isFreeDelivery ? 0 : rawDeliveryFee;
+  const finalTotalAmount = totalCartPrice + actualDeliveryCharge;
+  const deliveryDescription = deliveryConfig?.deliveryDescription || 'If you take 300 rupay item , you can take free delivery';
 
   return (
     <div className="max-w-xl mx-auto px-4 py-6">
@@ -137,9 +145,9 @@ export default function CartSection({
                         {formatPieceUnit(item.piece || item.portion)}
                       </span>
                     </p>
-                    {typeof item.stock === 'number' && (
-                      <p className="text-[11px] text-gray-500 mt-0.5">
-                        Stock: {item.stock} | Rem: <span className={item.stock - item.quantity < 0 ? 'text-red-600 font-bold' : 'text-emerald-700 font-medium'}>{item.stock - item.quantity}</span>
+                    {typeof item.stock === 'number' && item.stock <= 0 && (
+                      <p className="text-[11px] text-red-600 font-semibold mt-0.5">
+                        Out of stock
                       </p>
                     )}
                   </div>
@@ -184,18 +192,50 @@ export default function CartSection({
           </div>
 
           {/* Bill summary */}
-          <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-2 text-sm">
+          <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 space-y-2.5 text-sm">
             <div className="flex justify-between text-gray-600 text-xs">
               <span>Items Total</span>
               <span>₹{totalCartPrice}</span>
             </div>
-            <div className="flex justify-between text-gray-600 text-xs">
+
+            <div className="flex justify-between text-gray-600 text-xs items-center">
               <span>Estimated Delivery</span>
-              <span className="text-green-600 font-medium">Free</span>
+              {isFreeDelivery ? (
+                <div className="flex items-center gap-1.5">
+                  {rawDeliveryFee > 0 && (
+                    <span className="line-through text-gray-400 text-[11px]">₹{rawDeliveryFee}</span>
+                  )}
+                  <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md text-xs">Free</span>
+                </div>
+              ) : (
+                <span className="font-bold text-gray-800 text-xs">₹{actualDeliveryCharge}</span>
+              )}
             </div>
+
+            {/* Delivery Description paragraph right below Estimated Delivery */}
+            {deliveryDescription && (
+              <div className={`p-2.5 rounded-xl border text-xs flex items-start gap-2.5 transition-all ${
+                isFreeDelivery
+                  ? 'bg-emerald-50/70 border-emerald-200/80 text-emerald-900'
+                  : 'bg-amber-50/70 border-amber-200/70 text-amber-900'
+              }`}>
+                <span className="text-base shrink-0 leading-none">🚚</span>
+                <div className="flex-1">
+                  <p className="font-medium leading-relaxed">
+                    {deliveryDescription}
+                  </p>
+                  {!isFreeDelivery && freeThreshold > totalCartPrice && (
+                    <p className="mt-1 font-bold text-[11px] text-teal-800">
+                      Add ₹{freeThreshold - totalCartPrice} more to get FREE Delivery!
+                    </p>
+                  )}
+                </div>
+              </div>
+            )}
+
             <div className="pt-2 border-t border-gray-100 flex justify-between items-center">
               <span className="font-bold text-gray-800">Total Amount</span>
-              <span className="font-bold text-lg text-teal-700">₹{totalCartPrice}</span>
+              <span className="font-bold text-lg text-teal-700">₹{finalTotalAmount}</span>
             </div>
           </div>
 
@@ -212,7 +252,7 @@ export default function CartSection({
               }`}
             >
               <MessageCircle size={19} />
-              <span>{isSubmitting ? 'Submitting & Deducting Stock...' : 'Submit Order & Share on WhatsApp'}</span>
+              <span>{isSubmitting ? 'Submitting Order...' : 'Submit Order & Share on WhatsApp'}</span>
             </button>
             <p className="text-center text-[11px] text-gray-500 font-medium">
               Order directly to Owner on WhatsApp (+91 70173 73371)

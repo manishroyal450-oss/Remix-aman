@@ -17,7 +17,8 @@ import {
   Search, ShoppingCart, MessageCircle, X, Trash2, Lock, 
   ExternalLink, RefreshCw, ShieldCheck, LogOut, Check, ArrowRight, 
   Paperclip, Plus, Minus, Tag, Send, MapPin, Sparkles, ChevronDown, Percent,
-  Play, Video, Download, Smartphone, Youtube, Instagram, Facebook
+  Play, Video, Download, Smartphone, Youtube, Instagram, Facebook,
+  WifiOff, RotateCw
 } from 'lucide-react';
 import { 
   MenuItem, CartItem, UserProfile, formatPieceUnit, 
@@ -29,7 +30,7 @@ import headerBgImage from './assets/images/header_3d_sweets_bg_1786805389446.jpg
 import 'swiper/element/bundle';
 
 export default function App() {
-  const { data: menuData, loading, error, refresh, deductStockLocally } = useMenuData();
+  const { data: menuData, loading, error, refresh, deductStockLocally, deliveryConfig, isOffline } = useMenuData();
   const [activeTab, setActiveTab] = useState<NavTab>('home');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
@@ -282,21 +283,28 @@ export default function App() {
       return;
     }
 
-    const itemsText = ownerPrivacyItems.map(item => {
+    const itemsText = ownerPrivacyItems.map((item, idx) => {
       const unit = getItemUnitPrice(item);
       const itemTot = unit * item.quantity;
-      return `• ${item.name} (${item.quantity}x) - ₹${itemTot}${item.offer ? ` [Offer: ${item.offer}]` : ''}`;
-    }).join('\n');
+      return `🍽️ *${idx + 1}. ${item.name}*\n   ▫️ *Qty:* ${item.quantity} × ₹${unit}\n   ▫️ *Price:* ₹${itemTot}${item.offer ? `\n   ▫️ *Special Offer:* ${item.offer}` : ''}`;
+    }).join('\n\n');
 
     const total = ownerPrivacyItems.reduce((sum, item) => {
       return sum + (getItemUnitPrice(item) * item.quantity);
     }, 0);
 
-    let text = `🌟 *AMAN SWEET - EXCLUSIVE OWNER OFFER* 🌟\n\n${itemsText}\n\n*Total Offer Amount: ₹${total}*`;
+    let text = `🌟 *AMAN SWEET — EXCLUSIVE SPECIAL OFFER* 🌟\n`;
+    text += `══════════════════════\n`;
+    text += `🎉 *Specially Curated Offer For You:*\n\n`;
+    text += `${itemsText}\n\n`;
+    text += `──────────────────────\n`;
+    text += `💰 *TOTAL OFFER VALUE: ₹${total}*\n`;
     if (ownerOfferNote.trim()) {
-      text += `\n\n*Special Offer Details:* ${ownerOfferNote.trim()}`;
+      text += `\n📝 *Special Note:*\n${ownerOfferNote.trim()}\n`;
     }
-    text += `\n\n📍 *Aman Sweet* - Live Digital Menu & Sweets\n_Sent directly by Store Owner_`;
+    text += `══════════════════════\n`;
+    text += `🍬 *Aman Sweet* • Fresh Sweets & Delicacies\n`;
+    text += `✨ _Sent directly by Store Owner_`;
 
     const cleanPhone = ownerTargetPhone.replace(/\D/g, '');
     const phoneParam = cleanPhone ? (cleanPhone.length === 10 ? `91${cleanPhone}` : cleanPhone) : '';
@@ -357,7 +365,7 @@ export default function App() {
     const items = itemsToSubmit && itemsToSubmit.length > 0 ? itemsToSubmit : cart;
     if (items.length === 0) return null;
     setIsSubmittingOrder(true);
-    showNotification('Updating stock in Google Sheets...');
+    showNotification('Placing your order...');
 
     // Group quantities by base item clean name so that Apps Script finds the exact menu item in Google Sheet
     const qtyMap: Record<string, number> = {};
@@ -375,6 +383,12 @@ export default function App() {
       items.reduce((sum, item) => sum + getItemUnitPrice(item, item.selectedPortion) * item.quantity, 0)
     );
 
+    const freeThreshold = deliveryConfig?.freeDeliveryThreshold ?? 300;
+    const rawDeliveryFee = deliveryConfig?.deliveryFee ?? 40;
+    const isFreeDelivery = calculatedTotal >= freeThreshold;
+    const actualDeliveryCharge = isFreeDelivery ? 0 : rawDeliveryFee;
+    const finalOrderTotal = calculatedTotal + actualDeliveryCharge;
+
     const payload = {
       customerName: customerName,
       phone: customerPhone,
@@ -382,7 +396,9 @@ export default function App() {
         name: name,
         qty: qty
       })),
-      totalAmount: calculatedTotal
+      deliveryCharge: actualDeliveryCharge,
+      itemsTotal: calculatedTotal,
+      totalAmount: finalOrderTotal
     };
 
     console.log('Sending payload to sheet:', payload);
@@ -460,24 +476,64 @@ export default function App() {
       qtyMap[cleanName] = (qtyMap[cleanName] || 0) + (item.quantity || 1);
     });
 
-    const message = cartSnapshot.map(item => {
-      const cleanName = getCleanItemName(item.name);
-      const orderedQty = qtyMap[cleanName] || item.quantity;
-      const currentStock = typeof item.stock === 'number' ? item.stock : 100;
-      const remainingStock = Math.max(0, currentStock - orderedQty);
+    const orderId = `AS-${Math.floor(1000 + Math.random() * 9000)}`;
+    const now = new Date();
+    const formattedDate = now.toLocaleDateString('en-IN', {
+      day: '2-digit',
+      month: 'short',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+      hour12: true
+    });
+
+    const itemsFormatted = cartSnapshot.map((item, idx) => {
       const unit = getItemUnitPrice(item, item.selectedPortion);
       const portionStr = item.selectedPortion ? ` (${item.selectedPortion})` : '';
       const kgGramStr = item.kgGram ? ` [${item.kgGram}]` : '';
       const pieceStr = formatPieceUnit(item.piece || item.portion);
-      return `${item.name}${portionStr}${kgGramStr} (${item.quantity}x @ ₹${unit}${pieceStr})${item.offer ? ` - Offer: ${item.offer}` : ''} = ₹${unit * item.quantity} (Remaining Stock: ${remainingStock})`;
-    }).join('\n');
-    const total = totalCartPrice;
+      return `🍽️ *${idx + 1}. ${item.name}*${portionStr}${kgGramStr}\n   ▫️ *Quantity:* ${item.quantity} × ₹${unit}${pieceStr}\n   ▫️ *Subtotal:* ₹${unit * item.quantity}${item.offer ? `\n   ▫️ *Offer:* ${item.offer}` : ''}`;
+    }).join('\n\n');
+
+    const freeThreshold = deliveryConfig?.freeDeliveryThreshold ?? 300;
+    const rawDeliveryFee = deliveryConfig?.deliveryFee ?? 40;
+    const isFreeDelivery = totalCartPrice >= freeThreshold;
+    const actualDeliveryCharge = isFreeDelivery ? 0 : rawDeliveryFee;
+    const finalTotal = totalCartPrice + actualDeliveryCharge;
     
-    let text = `*Aman Sweet* - Order Request:\n\n${message}\n\n*Total: ₹${total}*`;
-    if (userProfile?.fullName) {
-      text += `\n\n*Customer Details:*\nName: ${userProfile.fullName} ${userProfile.lastName || ''}\nContact: ${userProfile.contactNumber}\nAddress: ${userProfile.address}\nPin Code: ${userProfile.pinCode}`;
+    let text = `🛍️ *AMAN SWEET — ORDER REQUEST* 🛍️\n`;
+    text += `══════════════════════\n`;
+    text += `🆔 *Order ID:* #${orderId}\n`;
+    text += `📅 *Date & Time:* ${formattedDate}\n\n`;
+    text += `📦 *ORDERED DISHES:*\n`;
+    text += `──────────────────────\n`;
+    text += `${itemsFormatted}\n\n`;
+    text += `🧾 *BILL SUMMARY:*\n`;
+    text += `──────────────────────\n`;
+    text += `💵 *Items Total:* ₹${totalCartPrice}\n`;
+    text += `🚚 *Delivery Charges:* ${isFreeDelivery ? 'FREE 🎉 (Saved ₹' + rawDeliveryFee + ')' : '₹' + actualDeliveryCharge}\n`;
+    text += `💰 *TOTAL PAYABLE:* *₹${finalTotal}*\n`;
+
+    if (userProfile?.fullName || userProfile?.contactNumber || userProfile?.address) {
+      text += `\n👤 *CUSTOMER DELIVERY DETAILS:*\n`;
+      text += `──────────────────────\n`;
+      if (userProfile?.fullName) {
+        text += `👤 *Name:* ${userProfile.fullName} ${userProfile.lastName || ''}`.trim() + `\n`;
+      }
+      if (userProfile?.contactNumber) {
+        text += `📞 *Phone:* ${userProfile.contactNumber}\n`;
+      }
+      if (userProfile?.address) {
+        text += `📍 *Address:* ${userProfile.address}\n`;
+      }
+      if (userProfile?.pinCode) {
+        text += `📮 *Pin Code:* ${userProfile.pinCode}\n`;
+      }
     }
-    text += `\n\n_Thank you for ordering with us!_`;
+
+    text += `\n══════════════════════\n`;
+    text += `🙏 *Thank you for ordering with Aman Sweet!*\n`;
+    text += `✨ _Pure Vegetarian • Fresh Daily • Quality Sweets_ 🍬`;
     
     const cleanOwnerPhone = (ownerOrderWhatsApp || '917017373371').replace(/\D/g, '');
     const phoneParam = cleanOwnerPhone.length === 10 ? `91${cleanOwnerPhone}` : cleanOwnerPhone;
@@ -517,7 +573,7 @@ export default function App() {
     }
     const result = await submitOrderToBackend();
     if (result) {
-      showNotification('✓ Order submitted & stock deducted in Google Sheet!');
+      showNotification('✓ Order submitted successfully!');
       setCart([]);
       setSelectedFile(null);
     } else {
@@ -530,12 +586,64 @@ export default function App() {
     performShareOrder();
   };
 
-  if (loading) {
-    return <div className="p-12 text-center text-gray-600">Loading menu...</div>;
+  if (loading && menuData.length === 0) {
+    return (
+      <div className="min-h-screen bg-gray-50 flex flex-col items-center justify-center p-6 text-center select-none">
+        <div className="w-16 h-16 rounded-2xl bg-gradient-to-tr from-red-600 via-rose-600 to-amber-500 flex items-center justify-center text-white shadow-xl shadow-red-200/60 mb-4 animate-bounce">
+          <span className="text-2xl font-black tracking-tight">AS</span>
+        </div>
+        <h3 className="text-xl font-black text-gray-800 tracking-tight">Aman Sweet</h3>
+        <p className="text-xs text-gray-500 mt-2 flex items-center gap-2 justify-center font-medium">
+          <RotateCw size={14} className="animate-spin text-red-600" />
+          <span>Loading menu... Please wait</span>
+        </p>
+      </div>
+    );
   }
 
-  if (error) {
-    return <div className="p-12 text-center text-red-600">Error loading menu: {error}</div>;
+  if (error && menuData.length === 0) {
+    return (
+      <div className="min-h-screen bg-gradient-to-b from-gray-50 via-white to-gray-100 flex flex-col items-center justify-center p-6 text-center select-none">
+        {/* Animated Offline Icon */}
+        <div className="relative mb-6">
+          <div className="w-24 h-24 rounded-3xl bg-red-50 border border-red-100 flex items-center justify-center text-red-600 shadow-xl shadow-red-100">
+            <WifiOff size={44} className="stroke-[2.2] animate-pulse" />
+          </div>
+          <div className="absolute -top-1.5 -right-1.5 w-7 h-7 rounded-full bg-amber-500 text-white flex items-center justify-center font-bold text-xs shadow-md border-2 border-white">
+            !
+          </div>
+        </div>
+
+        {/* Heading & Subtext */}
+        <h2 className="text-2xl font-black text-gray-900 tracking-tight mb-1.5">
+          No Internet Connection
+        </h2>
+        <p className="text-sm font-bold text-red-600 mb-2">
+          इंटरनेट / मोबाइल डेटा बंद है
+        </p>
+        <p className="text-xs text-gray-500 max-w-xs leading-relaxed mb-7">
+          Kripya apna mobile data ya Wi-Fi chalu karein aur neeche diye gaye button par tap karke dubara koshish karein.
+        </p>
+
+        {/* Retry Button */}
+        <button
+          onClick={() => {
+            refresh();
+          }}
+          disabled={loading}
+          className="w-full max-w-xs bg-gradient-to-r from-red-600 to-rose-600 hover:from-red-700 hover:to-rose-700 active:scale-95 text-white font-bold py-3.5 px-6 rounded-2xl shadow-lg shadow-red-200 transition flex items-center justify-center gap-2.5 cursor-pointer text-sm"
+        >
+          <RotateCw size={18} className={loading ? 'animate-spin' : ''} />
+          <span>{loading ? 'Reconnecting...' : 'Retry Connection (पुनः प्रयास करें)'}</span>
+        </button>
+
+        {/* Auto reconnect hint */}
+        <div className="mt-8 pt-6 border-t border-gray-200/80 w-full max-w-xs flex items-center justify-center gap-2 text-xs text-gray-400">
+          <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping"></span>
+          <span>Data On hote hi apne aap connect ho jayega</span>
+        </div>
+      </div>
+    );
   }
 
   const totalCartCount = cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -543,6 +651,24 @@ export default function App() {
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24">
+      {/* Offline Status Top Bar (when browsing cached items) */}
+      {isOffline && (
+        <div className="bg-amber-600 text-white text-xs font-semibold py-2 px-4 flex items-center justify-between shadow-md sticky top-0 z-50">
+          <div className="flex items-center gap-2">
+            <WifiOff size={14} />
+            <span>Offline Mode: Browsing saved menu</span>
+          </div>
+          <button
+            onClick={() => refresh()}
+            disabled={loading}
+            className="bg-white/20 hover:bg-white/30 text-white px-2.5 py-0.5 rounded-full text-[11px] font-bold flex items-center gap-1 cursor-pointer transition active:scale-95"
+          >
+            <RotateCw size={11} className={loading ? 'animate-spin' : ''} />
+            <span>Retry</span>
+          </button>
+        </div>
+      )}
+
       {/* Toast Notification */}
       {notification && (
         <div className="fixed top-6 left-1/2 transform -translate-x-1/2 z-50 bg-teal-700 text-white py-2.5 px-5 rounded-xl shadow-2xl animate-pulse text-sm font-medium">
@@ -1001,6 +1127,7 @@ export default function App() {
             onGoToProfile={() => setActiveTab('profile')}
             isSubmitting={isSubmittingOrder}
             onSubmitDirectOrder={handleDirectOrderSubmit}
+            deliveryConfig={deliveryConfig}
           />
         )}
 

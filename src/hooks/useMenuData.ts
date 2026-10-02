@@ -1,15 +1,45 @@
 import { useState, useEffect } from 'react';
 import Papa from 'papaparse';
-import { MenuItem, DEFAULT_BAKERY_ITEMS } from '../data';
+import { MenuItem, DEFAULT_BAKERY_ITEMS, DeliveryConfig } from '../data';
 
 const SHEET_ID = '1otN1s4qs_QfF7jfK4uy-uTFOKhflZUXao7vTLrzQBK8';
 const SHEET_NAME = 'Restaurant Menu';
 const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(SHEET_NAME)}`;
+const CACHE_MENU_KEY = 'aman_sweet_menu_data_cache_v2';
+const CACHE_DELIVERY_KEY = 'aman_sweet_delivery_config_cache_v2';
+
+const getInitialCachedMenu = (): MenuItem[] => {
+  try {
+    const raw = localStorage.getItem(CACHE_MENU_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+    }
+  } catch (e) {}
+  return [];
+};
+
+const getInitialCachedDelivery = (): DeliveryConfig => {
+  try {
+    const raw = localStorage.getItem(CACHE_DELIVERY_KEY);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed && typeof parsed.deliveryFee === 'number') return parsed;
+    }
+  } catch (e) {}
+  return {
+    deliveryFee: 40,
+    deliveryDescription: 'If you take 300 rupay item , you can take free delivery',
+    freeDeliveryThreshold: 300,
+  };
+};
 
 export function useMenuData() {
-  const [data, setData] = useState<MenuItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [data, setData] = useState<MenuItem[]>(getInitialCachedMenu);
+  const [loading, setLoading] = useState(() => getInitialCachedMenu().length === 0);
   const [error, setError] = useState<string | null>(null);
+  const [isOffline, setIsOffline] = useState(() => typeof navigator !== 'undefined' ? !navigator.onLine : false);
+  const [deliveryConfig, setDeliveryConfig] = useState<DeliveryConfig>(getInitialCachedDelivery);
 
   const fetchData = async () => {
     try {
@@ -185,10 +215,80 @@ export function useMenuData() {
         ? formattedData
         : [...formattedData, ...DEFAULT_BAKERY_ITEMS];
 
+      // Dynamic column resolution for Column Q (delivery value) and Column R (delivery discription)
+      const qColIndex = headers.findIndex((h) =>
+        typeof h === 'string' && /delivery\s*(?:val|charge|fee|cost|price)/i.test(h.trim())
+      );
+      const colIndexDeliveryValue = qColIndex !== -1 ? qColIndex : 16;
+
+      const rColIndex = headers.findIndex((h) =>
+        typeof h === 'string' && /delivery\s*(?:disc|desc)/i.test(h.trim())
+      );
+      const colIndexDeliveryDesc = rColIndex !== -1 ? rColIndex : 17;
+
+      let parsedFee = 40;
+      let parsedDesc = 'If you take 300 rupay item , you can take free delivery';
+
+      for (let r = 1; r < rows.length; r++) {
+        const row = rows[r];
+        const valQ = row[colIndexDeliveryValue] ? row[colIndexDeliveryValue].trim() : '';
+        const valR = row[colIndexDeliveryDesc] ? row[colIndexDeliveryDesc].trim() : '';
+
+        if (valQ) {
+          const num = parseFloat(valQ.replace(/[^\d.]/g, ''));
+          if (!isNaN(num)) {
+            parsedFee = num;
+          }
+        }
+        if (valR) {
+          parsedDesc = valR;
+        }
+        if (valQ || valR) break;
+      }
+
+      // Check if description has a threshold, e.g. "300 rupay" or "300"
+      let threshold: number | null = null;
+      const thresholdMatch = parsedDesc.match(/(\d+)\s*(?:rupay|rupee|rs|inr|₹)/i);
+      if (thresholdMatch) {
+        threshold = parseFloat(thresholdMatch[1]);
+      } else {
+        const genericMatch = parsedDesc.match(/(?:above|over|take|orders?\s+above|min|minimum)\s*(\d{2,5})/i);
+        if (genericMatch) {
+          threshold = parseFloat(genericMatch[1]);
+        }
+      }
+
+      const newDeliveryConfig: DeliveryConfig = {
+        deliveryFee: parsedFee,
+        deliveryDescription: parsedDesc,
+        freeDeliveryThreshold: threshold ?? 300,
+      };
+
+      setDeliveryConfig(newDeliveryConfig);
       setData(finalData);
+      setError(null);
+      setIsOffline(false);
       setLoading(false);
+
+      // Save to offline cache
+      try {
+        localStorage.setItem(CACHE_MENU_KEY, JSON.stringify(finalData));
+        localStorage.setItem(CACHE_DELIVERY_KEY, JSON.stringify(newDeliveryConfig));
+      } catch (e) {}
     } catch (err) {
-      setError('Failed to fetch data');
+      console.warn('Network issue fetching menu data:', err);
+      setIsOffline(true);
+      // Fallback: check if we already have data or can get from cache
+      const cached = getInitialCachedMenu();
+      if (data.length > 0) {
+        // Keep existing loaded data, do not crash UI
+        setError(null);
+      } else if (cached.length > 0) {
+        setData(cached);
+        setError(null);
+      } else {
+        setError('No internet connection');
+      }
       setLoading(false);
     }
   };
@@ -209,9 +309,30 @@ export function useMenuData() {
 
   useEffect(() => {
     fetchData();
-    const interval = setInterval(fetchData, 10000);
-    return () => clearInterval(interval);
+    const interval = setInterval(() => {
+      if (typeof navigator === 'undefined' || navigator.onLine) {
+        fetchData();
+      }
+    }, 12000);
+
+    const handleOnline = () => {
+      setIsOffline(false);
+      fetchData();
+    };
+
+    const handleOffline = () => {
+      setIsOffline(true);
+    };
+
+    window.addEventListener('online', handleOnline);
+    window.addEventListener('offline', handleOffline);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('online', handleOnline);
+      window.removeEventListener('offline', handleOffline);
+    };
   }, []);
 
-  return { data, loading, error, refresh: fetchData, deductStockLocally };
+  return { data, loading, error, refresh: fetchData, deductStockLocally, deliveryConfig, isOffline };
 }

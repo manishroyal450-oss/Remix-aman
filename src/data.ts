@@ -20,6 +20,12 @@ export interface MenuItem {
   piece?: string; // Column F (piece)
 }
 
+export interface DeliveryConfig {
+  deliveryFee: number;
+  deliveryDescription: string;
+  freeDeliveryThreshold: number | null;
+}
+
 export type SocialPlatform = 'instagram' | 'facebook' | 'youtube';
 
 export function getCleanVideoUrl(url?: string): string | null {

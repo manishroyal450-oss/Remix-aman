@@ -10,12 +10,34 @@ export interface MenuItem {
   imageName?: string;
   image_url?: string;
   youtubeVideo?: string;
+  instagramVideo?: string;
+  facebookVideo?: string;
   stock?: number;
   price?: number;
   discount?: number;
   gst?: number;
   kgGram?: string; // Column M (kg/gram)
   piece?: string; // Column F (piece)
+}
+
+export type SocialPlatform = 'instagram' | 'facebook' | 'youtube';
+
+export function getCleanVideoUrl(url?: string): string | null {
+  if (!url || typeof url !== 'string') return null;
+  const clean = url.trim();
+  if (!clean || clean === '-' || clean === '0' || clean.length < 5) return null;
+  if (clean.startsWith('http://') || clean.startsWith('https://')) return clean;
+  return null;
+}
+
+export function detectSocialPlatform(url?: string): SocialPlatform | null {
+  const clean = getCleanVideoUrl(url);
+  if (!clean) return null;
+  const lower = clean.toLowerCase();
+  if (lower.includes('instagram.com') || lower.includes('instagr.am')) return 'instagram';
+  if (lower.includes('facebook.com') || lower.includes('fb.watch') || lower.includes('fb.me') || lower.includes('fb.com')) return 'facebook';
+  if (lower.includes('youtube.com') || lower.includes('youtu.be')) return 'youtube';
+  return null;
 }
 
 export function formatPieceUnit(pieceVal?: string): string {
@@ -185,6 +207,7 @@ export const DEFAULT_BAKERY_ITEMS: MenuItem[] = [
     imageName: '',
     image_url: 'https://images.unsplash.com/photo-1601050690597-df0568f70950?auto=format&fit=crop&w=600&q=80',
     youtubeVideo: '',
+    facebookVideo: 'https://www.facebook.com/watch/?v=10158238127394592',
     kgGram: '1 Pc'
   },
   {
@@ -204,6 +227,7 @@ export const DEFAULT_BAKERY_ITEMS: MenuItem[] = [
     imageName: '',
     image_url: 'https://images.unsplash.com/photo-1578985545062-69928b1d9587?auto=format&fit=crop&w=600&q=80',
     youtubeVideo: '',
+    instagramVideo: 'https://www.instagram.com/reel/DdRLWhgTpLk/?stkn=MWp3bW0ycXoyc3loYg==',
     kgGram: '1 Pc'
   },
   {
@@ -222,7 +246,7 @@ export const DEFAULT_BAKERY_ITEMS: MenuItem[] = [
     gst: 0,
     imageName: '',
     image_url: 'https://images.unsplash.com/photo-1535141192574-5d4897c13136?auto=format&fit=crop&w=600&q=80',
-    youtubeVideo: '',
+    youtubeVideo: 'https://youtu.be/PwTcikeQ8Wg?si=ex6YkgX90BV8RsQ1',
     kgGram: '1 Kg'
   },
   {

@@ -29,6 +29,21 @@ export function useMenuData() {
       );
       const colIndexPiece = pieceColIndex !== -1 ? pieceColIndex : 5;
 
+      // Explicit column resolution for Column N (Index 13: Instagram), Column O (Index 14: Facebook), Column P (Index 15: YouTube)
+      const colIndexInstagram = headers.findIndex((h) =>
+        typeof h === 'string' && /instagram|insta/i.test(h.trim())
+      ) !== -1 ? headers.findIndex((h) => typeof h === 'string' && /instagram|insta/i.test(h.trim())) : 13;
+
+      const colIndexFacebook = headers.findIndex((h) =>
+        typeof h === 'string' && /facebook|fb/i.test(h.trim())
+      ) !== -1 ? headers.findIndex((h) => typeof h === 'string' && /facebook|fb/i.test(h.trim())) : 14;
+
+      const colIndexYoutubeP = headers.findIndex((h, idx) =>
+        idx >= 13 && typeof h === 'string' && /youtube|yt/i.test(h.trim())
+      ) !== -1 ? headers.findIndex((h, idx) => idx >= 13 && typeof h === 'string' && /youtube|yt/i.test(h.trim())) : 15;
+
+      const colIndexCol10 = 10;
+
       // Filter out rows where name, nativeName, and seqId are all empty
       const validRows = rows.slice(1).filter((columns) => {
         const name = columns[4] ? columns[4].trim() : '';
@@ -57,7 +72,76 @@ export function useMenuData() {
           }
         }
 
-        const youtubeUrl = columns[10] ? columns[10].trim() : '';
+        // Column N (13: Instagram), Column O (14: Facebook), Column P (15: YouTube), Column K (10: Legacy)
+        const rawColN_Insta = colIndexInstagram !== -1 && columns[colIndexInstagram] ? columns[colIndexInstagram].trim() : (columns[13] ? columns[13].trim() : '');
+        const rawColO_Fb = colIndexFacebook !== -1 && columns[colIndexFacebook] ? columns[colIndexFacebook].trim() : (columns[14] ? columns[14].trim() : '');
+        const rawColP_Yt = colIndexYoutubeP !== -1 && columns[colIndexYoutubeP] ? columns[colIndexYoutubeP].trim() : (columns[15] ? columns[15].trim() : '');
+        const rawCol10 = columns[colIndexCol10] ? columns[colIndexCol10].trim() : '';
+
+        let instagramUrl = '';
+        let facebookUrl = '';
+        let youtubeUrl = '';
+
+        const cleanUrl = (url?: string) => {
+          if (!url || typeof url !== 'string') return '';
+          const trimmed = url.trim();
+          if (!trimmed || trimmed === '-' || trimmed === '0' || trimmed.length < 5) return '';
+          if (trimmed.startsWith('http://') || trimmed.startsWith('https://')) return trimmed;
+          return '';
+        };
+
+        // 1. Column N (Instagram)
+        const cleanedN = cleanUrl(rawColN_Insta);
+        if (cleanedN) {
+          const lower = cleanedN.toLowerCase();
+          if (lower.includes('facebook.com') || lower.includes('fb.watch') || lower.includes('fb.me')) {
+            facebookUrl = cleanedN;
+          } else if (lower.includes('youtube.com') || lower.includes('youtu.be')) {
+            youtubeUrl = cleanedN;
+          } else {
+            instagramUrl = cleanedN;
+          }
+        }
+
+        // 2. Column O (Facebook)
+        const cleanedO = cleanUrl(rawColO_Fb);
+        if (cleanedO) {
+          const lower = cleanedO.toLowerCase();
+          if (lower.includes('instagram.com') || lower.includes('instagr.am')) {
+            instagramUrl = cleanedO;
+          } else if (lower.includes('youtube.com') || lower.includes('youtu.be')) {
+            youtubeUrl = cleanedO;
+          } else {
+            facebookUrl = cleanedO;
+          }
+        }
+
+        // 3. Column P (YouTube)
+        const cleanedP = cleanUrl(rawColP_Yt);
+        if (cleanedP) {
+          const lower = cleanedP.toLowerCase();
+          if (lower.includes('instagram.com') || lower.includes('instagr.am')) {
+            instagramUrl = cleanedP;
+          } else if (lower.includes('facebook.com') || lower.includes('fb.watch') || lower.includes('fb.me')) {
+            facebookUrl = cleanedP;
+          } else {
+            youtubeUrl = cleanedP;
+          }
+        }
+
+        // 4. Legacy Column 10 (K): fallback if specific columns weren't set for this dish
+        const cleanedCol10 = cleanUrl(rawCol10);
+        if (cleanedCol10) {
+          const lower = cleanedCol10.toLowerCase();
+          if (lower.includes('instagram.com') || lower.includes('instagr.am')) {
+            if (!instagramUrl) instagramUrl = cleanedCol10;
+          } else if (lower.includes('facebook.com') || lower.includes('fb.watch') || lower.includes('fb.me')) {
+            if (!facebookUrl) facebookUrl = cleanedCol10;
+          } else {
+            if (!youtubeUrl) youtubeUrl = cleanedCol10;
+          }
+        }
+
         const imageUrlCol = columns[11] ? columns[11].trim() : ((columns as any)['image_url'] || '');
         const rawKgGram = columns[colIndexKgGram] ? columns[colIndexKgGram].trim() : '';
         const cleanKgGram =
@@ -86,7 +170,9 @@ export function useMenuData() {
           gst: 0,
           imageName: seqId,
           image_url: imageUrlCol,
-          youtubeVideo: youtubeUrl,
+          youtubeVideo: youtubeUrl || undefined,
+          instagramVideo: instagramUrl || undefined,
+          facebookVideo: facebookUrl || undefined,
           kgGram: cleanKgGram
         };
       });

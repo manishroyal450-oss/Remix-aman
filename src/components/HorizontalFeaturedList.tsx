@@ -1,7 +1,7 @@
 import React from 'react';
 import { MenuItem, CartItem, formatPieceUnit, getItemUnitPrice, hasBothPortions } from '../data';
 import { ItemImage } from './ItemImage';
-import { Plus, Minus, Star, Play, Sparkles } from 'lucide-react';
+import { Plus, Minus, Star, Play, Sparkles, Instagram, Facebook, Youtube } from 'lucide-react';
 
 interface HorizontalFeaturedListProps {
   title: string;
@@ -63,7 +63,10 @@ export const HorizontalFeaturedList: React.FC<HorizontalFeaturedListProps> = ({
 
           // Price display
           const displayPrice = getItemUnitPrice(item, defaultPortion);
-          const videoUrl = getValidYoutubeUrl(item.youtubeVideo);
+          const isInsta = Boolean(item.instagramVideo && item.instagramVideo.trim() !== '');
+          const isFb = Boolean(item.facebookVideo && item.facebookVideo.trim() !== '');
+          const isYt = Boolean(item.youtubeVideo && item.youtubeVideo.trim() !== '');
+          const videoUrl = item.instagramVideo || item.facebookVideo || item.youtubeVideo;
 
           return (
             <div
@@ -102,17 +105,24 @@ export const HorizontalFeaturedList: React.FC<HorizontalFeaturedListProps> = ({
                   </div>
                 </div>
 
-                {/* Video Play Button if available */}
+                {/* Video Open Button if available */}
                 {videoUrl && (
                   <a
                     href={videoUrl}
                     target="_blank"
                     rel="noopener noreferrer"
                     onClick={(e) => e.stopPropagation()}
-                    className="absolute bottom-2 right-2 z-10 bg-black/70 hover:bg-red-600 text-white p-1 rounded-full transition-colors shadow-xs"
-                    title="Watch Video"
+                    className={`absolute bottom-2 right-2 z-10 text-white px-2 py-0.5 rounded-full text-[10px] font-bold flex items-center gap-1 shadow-md transition-transform active:scale-95 cursor-pointer ${
+                      isInsta
+                        ? 'bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700'
+                        : isFb
+                        ? 'bg-[#1877F2] hover:bg-blue-700'
+                        : 'bg-red-600 hover:bg-red-700'
+                    }`}
+                    title={isInsta ? 'Open Instagram Reel' : isFb ? 'Open Facebook Video' : 'Open YouTube Video'}
                   >
-                    <Play size={12} className="fill-current ml-0.5" />
+                    {isInsta ? <Instagram size={10} /> : isFb ? <Facebook size={10} /> : <Youtube size={10} />}
+                    <span>Open</span>
                   </a>
                 )}
               </div>

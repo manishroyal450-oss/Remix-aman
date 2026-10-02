@@ -22,8 +22,12 @@ export const CategoryStoryRow: React.FC<CategoryStoryRowProps> = ({
       // Find Gulab Jamun or Kheer or first item with valid image
       return menuData.find(i => i.image_url || i.imageName);
     }
-    if (cat === 'YouTube Video') {
-      return menuData.find(i => Boolean(i.youtubeVideo && i.youtubeVideo.trim() !== '' && i.youtubeVideo.trim() !== '-'));
+    if (cat === 'YouTube Video' || cat === 'Social Videos' || cat === 'Videos & Reels') {
+      return menuData.find(i => Boolean(
+        (i.youtubeVideo && i.youtubeVideo.trim() !== '' && i.youtubeVideo.trim() !== '-') ||
+        (i.instagramVideo && i.instagramVideo.trim() !== '' && i.instagramVideo.trim() !== '-') ||
+        (i.facebookVideo && i.facebookVideo.trim() !== '' && i.facebookVideo.trim() !== '-')
+      ));
     }
     return menuData.find(i => i.category.toLowerCase() === cat.toLowerCase() && (i.image_url || i.imageName));
   };
@@ -42,7 +46,7 @@ export const CategoryStoryRow: React.FC<CategoryStoryRowProps> = ({
       <div className="flex gap-4 overflow-x-auto pb-2 pt-1 scrollbar-none px-1 snap-x">
         {categories.map((cat) => {
           const isSelected = selectedCategory === cat;
-          const isVideoCat = cat === 'YouTube Video';
+          const isVideoCat = cat === 'YouTube Video' || cat === 'Social Videos' || cat === 'Videos & Reels';
           const repItem = getCategoryImageItem(cat);
 
           return (

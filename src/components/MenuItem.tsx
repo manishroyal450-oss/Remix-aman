@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ShoppingCart, Lock, Check } from 'lucide-react';
+import { ShoppingCart, Lock, Check, Youtube, Instagram, Facebook, ExternalLink } from 'lucide-react';
 import { MenuItem, formatPieceUnit, hasBothPortions, parsePriceNumber } from '../data';
 
 interface Props {
@@ -66,9 +66,10 @@ const MenuItemComponent: React.FC<Props> = ({
     }
   };
   
-  const getValidYoutubeUrl = (url: string | undefined) => {
+  const getValidVideoUrl = (url: string | undefined) => {
     if (!url || typeof url !== 'string') return null;
     const clean = url.trim();
+    if (clean === '-' || clean === '0' || clean.length < 5) return null;
     if (clean.startsWith('http://') || clean.startsWith('https://')) {
       return clean;
     }
@@ -78,13 +79,15 @@ const MenuItemComponent: React.FC<Props> = ({
   const handleOpenVideo = (e: React.MouseEvent, url: string | undefined) => {
     e.preventDefault();
     e.stopPropagation();
-    const validUrl = getValidYoutubeUrl(url);
+    const validUrl = getValidVideoUrl(url);
     if (!validUrl) return;
     
     window.open(validUrl, '_blank', 'noopener,noreferrer');
   };
 
-  const videoUrl = getValidYoutubeUrl(item.youtubeVideo);
+  const ytUrl = getValidVideoUrl(item.youtubeVideo);
+  const instaUrl = getValidVideoUrl(item.instagramVideo);
+  const fbUrl = getValidVideoUrl(item.facebookVideo);
 
   return (
     <div id={`item-${item.id}`} className="bg-white p-4 sm:p-5 rounded-2xl shadow-sm hover:shadow-md transition-all duration-200 border border-gray-100 flex flex-col gap-3 relative group">
@@ -109,6 +112,51 @@ const MenuItemComponent: React.FC<Props> = ({
             <div className="w-1.5 h-1.5 bg-emerald-600 rounded-full" />
           </div>
         </div>
+
+        {/* Quick Open Social Video Buttons on Image */}
+        {(instaUrl || fbUrl || ytUrl) && (
+          <div className="absolute bottom-2.5 right-2.5 z-10 flex items-center gap-1.5 flex-wrap justify-end">
+            {instaUrl && (
+              <a
+                href={instaUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 text-white text-[11px] font-bold px-2.5 py-1 rounded-full shadow-md flex items-center gap-1 transition-transform active:scale-95 cursor-pointer"
+                title="Open Instagram Reel"
+              >
+                <Instagram size={12} />
+                <span>Open Reel</span>
+              </a>
+            )}
+            {fbUrl && (
+              <a
+                href={fbUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="bg-[#1877F2] hover:bg-blue-700 text-white text-[11px] font-bold px-2.5 py-1 rounded-full shadow-md flex items-center gap-1 transition-transform active:scale-95 cursor-pointer"
+                title="Open Facebook Video"
+              >
+                <Facebook size={12} />
+                <span>Open FB</span>
+              </a>
+            )}
+            {ytUrl && (
+              <a
+                href={ytUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                onClick={(e) => e.stopPropagation()}
+                className="bg-red-600 hover:bg-red-700 text-white text-[11px] font-bold px-2.5 py-1 rounded-full shadow-md flex items-center gap-1 transition-transform active:scale-95 cursor-pointer"
+                title="Open YouTube Video"
+              >
+                <Youtube size={12} />
+                <span>Open YouTube</span>
+              </a>
+            )}
+          </div>
+        )}
       </div>
 
       <div className="flex justify-between items-start gap-2">
@@ -157,25 +205,47 @@ const MenuItemComponent: React.FC<Props> = ({
             {item.offer}
           </span>
         )}
-        {videoUrl && (
-          <button
-            type="button"
-            onClick={(e) => handleOpenVideo(e, videoUrl)}
-            style={{
-              background: 'none',
-              border: 'none',
-              color: '#E60000',
-              fontWeight: 'bold',
-              fontSize: '13px',
-              cursor: 'pointer',
-              padding: '4px 0',
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '4px'
-            }}
+        {instaUrl && (
+          <a
+            href={instaUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700 px-3 py-1 rounded-lg transition shadow-xs cursor-pointer"
+            title="Open Instagram Reel"
           >
-            ▶ Watch Video
-          </button>
+            <Instagram size={13} />
+            <span>Open Reel</span>
+            <ExternalLink size={10} />
+          </a>
+        )}
+        {fbUrl && (
+          <a
+            href={fbUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-[#1877F2] hover:bg-blue-700 px-3 py-1 rounded-lg transition shadow-xs cursor-pointer"
+            title="Open Facebook Video"
+          >
+            <Facebook size={13} />
+            <span>Open Facebook</span>
+            <ExternalLink size={10} />
+          </a>
+        )}
+        {ytUrl && (
+          <a
+            href={ytUrl}
+            target="_blank"
+            rel="noopener noreferrer"
+            onClick={(e) => e.stopPropagation()}
+            className="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-red-600 hover:bg-red-700 px-3 py-1 rounded-lg transition shadow-xs cursor-pointer"
+            title="Open YouTube Video"
+          >
+            <Youtube size={13} />
+            <span>Open YouTube</span>
+            <ExternalLink size={10} />
+          </a>
         )}
       </div>
       

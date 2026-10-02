@@ -12,16 +12,17 @@ import CartSection from './components/CartSection';
 import { PromoBanner } from './components/PromoBanner';
 import { CategoryStoryRow } from './components/CategoryStoryRow';
 import { HorizontalFeaturedList } from './components/HorizontalFeaturedList';
+import { SocialMediaSection } from './components/SocialMediaSection';
 import { 
   Search, ShoppingCart, MessageCircle, X, Trash2, Lock, 
   ExternalLink, RefreshCw, ShieldCheck, LogOut, Check, ArrowRight, 
   Paperclip, Plus, Minus, Tag, Send, MapPin, Sparkles, ChevronDown, Percent,
-  Play, Video, Download, Smartphone
+  Play, Video, Download, Smartphone, Youtube, Instagram, Facebook
 } from 'lucide-react';
 import { 
   MenuItem, CartItem, UserProfile, formatPieceUnit, 
   getItemUnitPrice, hasBothPortions, getCleanItemName, parsePriceNumber,
-  openWhatsAppChat
+  openWhatsAppChat, SocialPlatform
 } from './data';
 import { submitOrderAndDeductStock, getScriptUrl, setScriptUrl } from './services/orderService';
 import headerBgImage from './assets/images/header_3d_sweets_bg_1786805389446.jpg';
@@ -92,18 +93,32 @@ export default function App() {
     }
   }
   const baseCategories = rawCategories;
-  const hasAnyVideo = menuData.some(item => Boolean(item.youtubeVideo && item.youtubeVideo.trim() !== '' && item.youtubeVideo.trim() !== '-'));
+  const hasAnyVideo = menuData.some(item => 
+    Boolean(
+      (item.youtubeVideo && item.youtubeVideo.trim() !== '' && item.youtubeVideo.trim() !== '-') ||
+      (item.instagramVideo && item.instagramVideo.trim() !== '' && item.instagramVideo.trim() !== '-') ||
+      (item.facebookVideo && item.facebookVideo.trim() !== '' && item.facebookVideo.trim() !== '-')
+    )
+  );
   const categories = hasAnyVideo ? ['All', 'YouTube Video', ...baseCategories] : ['All', ...baseCategories];
-  const [quickFilter, setQuickFilter] = useState<'all' | 'offers' | 'under100' | 'video'>('all');
+  const [quickFilter, setQuickFilter] = useState<'all' | 'offers' | 'under100' | 'video' | 'instagram' | 'facebook' | 'youtube'>('all');
+  const [activeSocialCatalogueFilter, setActiveSocialCatalogueFilter] = useState<SocialPlatform | null>(null);
+
+  const instaCount = menuData.filter(i => Boolean(i.instagramVideo && i.instagramVideo.trim() !== '')).length;
+  const fbCount = menuData.filter(i => Boolean(i.facebookVideo && i.facebookVideo.trim() !== '')).length;
+  const ytCount = menuData.filter(i => Boolean(i.youtubeVideo && i.youtubeVideo.trim() !== '')).length;
 
   const filteredData = menuData.filter(item => {
-    const isItemVideo = Boolean(item.youtubeVideo && item.youtubeVideo.trim() !== '' && item.youtubeVideo.trim() !== '-');
+    const hasYt = Boolean(item.youtubeVideo && item.youtubeVideo.trim() !== '' && item.youtubeVideo.trim() !== '-');
+    const hasInsta = Boolean(item.instagramVideo && item.instagramVideo.trim() !== '' && item.instagramVideo.trim() !== '-');
+    const hasFb = Boolean(item.facebookVideo && item.facebookVideo.trim() !== '' && item.facebookVideo.trim() !== '-');
+    const hasAnyVid = hasYt || hasInsta || hasFb;
 
     let matchesCategory = false;
     if (selectedCategory === 'All') {
       matchesCategory = true;
     } else if (selectedCategory === 'YouTube Video') {
-      matchesCategory = isItemVideo;
+      matchesCategory = hasAnyVid;
     } else {
       matchesCategory = item.category.toLowerCase() === selectedCategory.toLowerCase();
     }
@@ -119,10 +134,25 @@ export default function App() {
       const price = parseFloat(item.priceFull || item.priceHalf || String(item.price) || '0');
       matchesQuick = price > 0 && price <= 100;
     } else if (quickFilter === 'video') {
-      matchesQuick = isItemVideo;
+      matchesQuick = hasAnyVid;
+    } else if (quickFilter === 'instagram') {
+      matchesQuick = hasInsta;
+    } else if (quickFilter === 'facebook') {
+      matchesQuick = hasFb;
+    } else if (quickFilter === 'youtube') {
+      matchesQuick = hasYt;
     }
 
-    return matchesCategory && matchesSearch && matchesQuick;
+    let matchesSocial = true;
+    if (activeSocialCatalogueFilter === 'instagram') {
+      matchesSocial = hasInsta;
+    } else if (activeSocialCatalogueFilter === 'facebook') {
+      matchesSocial = hasFb;
+    } else if (activeSocialCatalogueFilter === 'youtube') {
+      matchesSocial = hasYt;
+    }
+
+    return matchesCategory && matchesSearch && matchesQuick && matchesSocial;
   });
 
   // Featured items for horizontal side-scrolling list
@@ -682,10 +712,28 @@ export default function App() {
               onUpdateQuantity={handleUpdateHorizontalQuantity}
             />
 
+            {/* Social Media Videos Showcase (Instagram, Facebook, YouTube) directly above Catalogue */}
+            <SocialMediaSection
+              menuData={menuData}
+              onAddToCart={(item) => addToCart(item, 'Full')}
+              onFilterPlatformInCatalogue={(platform) => {
+                setActiveSocialCatalogueFilter(platform);
+                if (platform) {
+                  setQuickFilter(platform);
+                } else {
+                  setQuickFilter('all');
+                }
+              }}
+              activeCataloguePlatformFilter={activeSocialCatalogueFilter}
+            />
+
             {/* 4. Quick Filter Chips Bar */}
             <div className="flex items-center gap-2 mb-4 overflow-x-auto pb-1 scrollbar-none px-1">
               <button
-                onClick={() => setQuickFilter('all')}
+                onClick={() => {
+                  setQuickFilter('all');
+                  setActiveSocialCatalogueFilter(null);
+                }}
                 className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition cursor-pointer ${
                   quickFilter === 'all'
                     ? 'bg-gray-900 text-white shadow-xs'
@@ -695,7 +743,10 @@ export default function App() {
                 All Dishes
               </button>
               <button
-                onClick={() => setQuickFilter('offers')}
+                onClick={() => {
+                  setQuickFilter('offers');
+                  setActiveSocialCatalogueFilter(null);
+                }}
                 className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition cursor-pointer flex items-center gap-1 ${
                   quickFilter === 'offers'
                     ? 'bg-red-600 text-white shadow-xs'
@@ -706,7 +757,10 @@ export default function App() {
                 <span>Special Offers</span>
               </button>
               <button
-                onClick={() => setQuickFilter('under100')}
+                onClick={() => {
+                  setQuickFilter('under100');
+                  setActiveSocialCatalogueFilter(null);
+                }}
                 className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition cursor-pointer ${
                   quickFilter === 'under100'
                     ? 'bg-amber-600 text-white shadow-xs'
@@ -715,28 +769,84 @@ export default function App() {
               >
                 ₹ Under 100
               </button>
-              <button
-                id="filter-youtube-videos"
-                onClick={() => setQuickFilter(quickFilter === 'video' ? 'all' : 'video')}
-                className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
-                  quickFilter === 'video'
-                    ? 'bg-red-600 text-white shadow-xs ring-2 ring-red-400'
-                    : 'bg-white text-red-600 border border-red-200 hover:bg-red-50'
-                }`}
-                title="Show only items with YouTube video links"
-              >
-                <div className={`w-4 h-4 rounded-full flex items-center justify-center ${
-                  quickFilter === 'video' ? 'bg-white text-red-600' : 'bg-red-600 text-white'
-                }`}>
-                  <Play size={8} className="fill-current ml-0.5" />
-                </div>
-                <span>YouTube Video</span>
-                <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
-                  quickFilter === 'video' ? 'bg-white/20 text-white' : 'bg-red-100 text-red-700'
-                }`}>
-                  {menuData.filter(i => Boolean(i.youtubeVideo && i.youtubeVideo.trim() !== '' && i.youtubeVideo.trim() !== '-')).length}
-                </span>
-              </button>
+
+              {/* Instagram Reels Filter */}
+              {instaCount > 0 && (
+                <button
+                  id="filter-instagram-reels"
+                  onClick={() => {
+                    const next = quickFilter === 'instagram' ? 'all' : 'instagram';
+                    setQuickFilter(next);
+                    setActiveSocialCatalogueFilter(next === 'instagram' ? 'instagram' : null);
+                  }}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
+                    quickFilter === 'instagram'
+                      ? 'bg-gradient-to-r from-purple-600 via-pink-600 to-orange-500 text-white shadow-xs ring-2 ring-pink-400'
+                      : 'bg-white text-pink-600 border border-pink-200 hover:bg-pink-50'
+                  }`}
+                  title="Show only dishes with Instagram reels"
+                >
+                  <Instagram size={13} />
+                  <span>Instagram</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                    quickFilter === 'instagram' ? 'bg-white/20 text-white' : 'bg-pink-100 text-pink-700'
+                  }`}>
+                    {instaCount}
+                  </span>
+                </button>
+              )}
+
+              {/* Facebook Videos Filter */}
+              {fbCount > 0 && (
+                <button
+                  id="filter-facebook-videos"
+                  onClick={() => {
+                    const next = quickFilter === 'facebook' ? 'all' : 'facebook';
+                    setQuickFilter(next);
+                    setActiveSocialCatalogueFilter(next === 'facebook' ? 'facebook' : null);
+                  }}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
+                    quickFilter === 'facebook'
+                      ? 'bg-[#1877F2] text-white shadow-xs ring-2 ring-blue-400'
+                      : 'bg-white text-[#1877F2] border border-blue-200 hover:bg-blue-50'
+                  }`}
+                  title="Show only dishes with Facebook videos"
+                >
+                  <Facebook size={13} />
+                  <span>Facebook</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                    quickFilter === 'facebook' ? 'bg-white/20 text-white' : 'bg-blue-100 text-blue-700'
+                  }`}>
+                    {fbCount}
+                  </span>
+                </button>
+              )}
+
+              {/* YouTube Videos Filter */}
+              {ytCount > 0 && (
+                <button
+                  id="filter-youtube-videos"
+                  onClick={() => {
+                    const next = quickFilter === 'youtube' ? 'all' : 'youtube';
+                    setQuickFilter(next);
+                    setActiveSocialCatalogueFilter(next === 'youtube' ? 'youtube' : null);
+                  }}
+                  className={`px-3.5 py-1.5 rounded-full text-xs font-bold whitespace-nowrap transition cursor-pointer flex items-center gap-1.5 ${
+                    quickFilter === 'youtube'
+                      ? 'bg-[#FF0000] text-white shadow-xs ring-2 ring-red-400'
+                      : 'bg-white text-red-600 border border-red-200 hover:bg-red-50'
+                  }`}
+                  title="Show only items with YouTube video links"
+                >
+                  <Youtube size={13} />
+                  <span>YouTube</span>
+                  <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                    quickFilter === 'youtube' ? 'bg-white/20 text-white' : 'bg-red-100 text-red-700'
+                  }`}>
+                    {ytCount}
+                  </span>
+                </button>
+              )}
             </div>
 
             {/* 5. Vertical Scrolling Menu Section ("or vertically scroll hai") */}
@@ -744,21 +854,26 @@ export default function App() {
               <div className="flex items-center justify-between px-1 mb-3.5">
                 <div>
                   <h2 className="text-base sm:text-lg font-black text-gray-900 tracking-tight">
-                    {selectedCategory === 'All' 
-                      ? (quickFilter === 'video' ? 'Dishes with YouTube Recipe Videos' : 'All Dishes Delivering To You')
+                    {quickFilter === 'instagram'
+                      ? 'Dishes with Instagram Reels'
+                      : quickFilter === 'facebook'
+                      ? 'Dishes with Facebook Videos'
+                      : quickFilter === 'youtube'
+                      ? 'Dishes with YouTube Recipe Videos'
+                      : selectedCategory === 'All' 
+                      ? (quickFilter === 'video' ? 'Dishes with Recipe Videos' : 'All Dishes Delivering To You')
                       : `${selectedCategory} Specials`}
                   </h2>
                   <p className="text-xs text-gray-500 font-medium">
-                    {quickFilter === 'video' || selectedCategory === 'YouTube Video'
-                      ? `Showing ${filteredData.length} items with video links`
-                      : `Showing ${filteredData.length} fresh items from live catalog`}
+                    Showing {filteredData.length} fresh items from live catalog
                   </p>
                 </div>
-                {(selectedCategory !== 'All' || quickFilter !== 'all') && (
+                {(selectedCategory !== 'All' || quickFilter !== 'all' || activeSocialCatalogueFilter) && (
                   <button
                     onClick={() => {
                       setSelectedCategory('All');
                       setQuickFilter('all');
+                      setActiveSocialCatalogueFilter(null);
                     }}
                     className="text-xs font-bold text-red-600 hover:underline cursor-pointer"
                   >
@@ -999,6 +1114,17 @@ export default function App() {
                   >
                     <RefreshCw size={16} className={`transition ${isSyncing ? 'animate-spin text-teal-600' : ''}`} />
                   </button>
+                </div>
+
+                {/* Social Media Links Guide for Owner */}
+                <div className="bg-gradient-to-r from-pink-50 via-blue-50 to-red-50 border border-gray-200 rounded-xl p-3 text-xs space-y-1.5">
+                  <p className="font-bold text-gray-800 flex items-center gap-1.5">
+                    <Sparkles size={13} className="text-amber-600" />
+                    <span>Social Media Videos (Excel Guide)</span>
+                  </p>
+                  <p className="text-[11px] text-gray-600 leading-relaxed">
+                    Google Sheet me <strong>youtube_video</strong> column me chahe aap <strong>Instagram Reel</strong>, <strong>Facebook Video</strong> ya <strong>YouTube</strong> ka link dalein, app apne aap pehchan kar catalogue ke upar alag-alag tabs aur buttons me show karega!
+                  </p>
                 </div>
 
                 {/* OWNER PRIVACY SECTION - Replaces Sync button */}

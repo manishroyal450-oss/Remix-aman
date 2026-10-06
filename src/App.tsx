@@ -8,7 +8,7 @@ import { useMenuData } from './hooks/useMenuData';
 import MenuItemComponent from './components/MenuItem';
 import BottomNavBar, { NavTab } from './components/BottomNavBar';
 import ProfileSection from './components/ProfileSection';
-import CartSection from './components/CartSection';
+import CartSection, { OrderPreference } from './components/CartSection';
 import { PromoBanner } from './components/PromoBanner';
 import { CategoryStoryRow } from './components/CategoryStoryRow';
 import { HorizontalFeaturedList } from './components/HorizontalFeaturedList';
@@ -18,24 +18,47 @@ import {
   ExternalLink, RefreshCw, ShieldCheck, LogOut, Check, ArrowRight, 
   Paperclip, Plus, Minus, Tag, Send, MapPin, Sparkles, ChevronDown, Percent,
   Play, Video, Download, Smartphone, Youtube, Instagram, Facebook,
-  WifiOff, RotateCw
+  WifiOff, RotateCw, Copy, FileCode
 } from 'lucide-react';
 import { 
   MenuItem, CartItem, UserProfile, formatPieceUnit, 
   getItemUnitPrice, hasBothPortions, getCleanItemName, parsePriceNumber,
   openWhatsAppChat, SocialPlatform
 } from './data';
-import { submitOrderAndDeductStock, getScriptUrl, setScriptUrl } from './services/orderService';
+import { submitOrderAndDeductStock, getScriptUrl, setScriptUrl, GOOGLE_APPS_SCRIPT_ONE_ROW_CODE } from './services/orderService';
 import headerBgImage from './assets/images/header_3d_sweets_bg_1786805389446.jpg';
 import 'swiper/element/bundle';
 
 export default function App() {
   const { data: menuData, loading, error, refresh, deductStockLocally, deliveryConfig, isOffline } = useMenuData();
+  const [showScriptCode, setShowScriptCode] = useState(false);
+  const [copiedScript, setCopiedScript] = useState(false);
   const [activeTab, setActiveTab] = useState<NavTab>('home');
   const [selectedCategory, setSelectedCategory] = useState('All');
   const [searchQuery, setSearchQuery] = useState('');
   const [cart, setCart] = useState<CartItem[]>([]);
   const [userProfile, setUserProfile] = useState<UserProfile | null>(null);
+  const [orderPreference, setOrderPreference] = useState<OrderPreference>('delivery');
+  const [dineInTable, setDineInTable] = useState<string>('Table 2');
+  const [pickupNote, setPickupNote] = useState<string>('');
+  const [specialInstructions, setSpecialInstructions] = useState<string>('');
+  const [cartCustomerName, setCartCustomerName] = useState<string>('');
+  const [cartCustomerPhone, setCartCustomerPhone] = useState<string>('');
+  const [cartDeliveryAddress, setCartDeliveryAddress] = useState<string>('');
+
+  useEffect(() => {
+    if (userProfile) {
+      if (!cartCustomerName && userProfile.fullName) {
+        setCartCustomerName(`${userProfile.fullName} ${userProfile.lastName || ''}`.trim());
+      }
+      if (!cartCustomerPhone && userProfile.contactNumber) {
+        setCartCustomerPhone(userProfile.contactNumber);
+      }
+      if (!cartDeliveryAddress && userProfile.address) {
+        setCartDeliveryAddress(userProfile.address);
+      }
+    }
+  }, [userProfile]);
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [notification, setNotification] = useState<string | null>(null);
   const [isSubmittingOrder, setIsSubmittingOrder] = useState(false);
@@ -367,41 +390,83 @@ export default function App() {
     setIsSubmittingOrder(true);
     showNotification('Placing your order...');
 
-    // Group quantities by base item clean name so that Apps Script finds the exact menu item in Google Sheet
+    // Group quantities and calculate prices by base item clean name
     const qtyMap: Record<string, number> = {};
+    const itemDetailsMap: Record<string, { unitPrice: number; itemTotal: number }> = {};
+
     items.forEach(item => {
       const cleanName = getCleanItemName(item.name);
-      qtyMap[cleanName] = (qtyMap[cleanName] || 0) + (item.quantity || 1);
+      const qty = item.quantity || 1;
+      const unit = getItemUnitPrice(item, item.selectedPortion);
+      qtyMap[cleanName] = (qtyMap[cleanName] || 0) + qty;
+      if (!itemDetailsMap[cleanName]) {
+        itemDetailsMap[cleanName] = { unitPrice: unit, itemTotal: unit * qty };
+      } else {
+        itemDetailsMap[cleanName].itemTotal += unit * qty;
+      }
     });
 
-    const customerName = userProfile?.fullName
-      ? `${userProfile.fullName} ${userProfile.lastName || ''}`.trim()
-      : 'Customer';
-    const customerPhone = userProfile?.contactNumber || '';
+    const effectiveName = cartCustomerName.trim() || (userProfile?.fullName ? `${userProfile.fullName} ${userProfile.lastName || ''}`.trim() : 'Customer');
+    const effectivePhone = cartCustomerPhone.trim() || userProfile?.contactNumber || '';
+    const effectiveAddress = cartDeliveryAddress.trim() || userProfile?.address || '';
 
     const calculatedTotal = Math.round(
       items.reduce((sum, item) => sum + getItemUnitPrice(item, item.selectedPortion) * item.quantity, 0)
     );
 
-    const freeThreshold = deliveryConfig?.freeDeliveryThreshold ?? 300;
-    const rawDeliveryFee = deliveryConfig?.deliveryFee ?? 40;
-    const isFreeDelivery = calculatedTotal >= freeThreshold;
-    const actualDeliveryCharge = isFreeDelivery ? 0 : rawDeliveryFee;
+    const isDelivery = orderPreference === 'delivery';
+    const rawDeliveryFee = isDelivery ? (deliveryConfig?.deliveryFee ?? 0) : 0;
+    const freeThreshold = isDelivery ? (deliveryConfig?.freeDeliveryThreshold ?? null) : null;
+    const isFreeDelivery = !isDelivery || rawDeliveryFee === 0 || (freeThreshold !== null && calculatedTotal >= freeThreshold);
+    const actualDeliveryCharge = isDelivery ? (isFreeDelivery ? 0 : rawDeliveryFee) : 0;
     const finalOrderTotal = calculatedTotal + actualDeliveryCharge;
 
+    const orderTypeLabel = orderPreference === 'dine-in'
+      ? `Dine-In (${dineInTable})`
+      : orderPreference === 'takeaway'
+        ? 'Takeaway (Self-Pickup)'
+        : 'Delivery';
+
+    const totalUnitsCount = items.reduce((sum, item) => sum + item.quantity, 0);
+    const itemsSummaryString = Object.entries(qtyMap)
+      .map(([name, qty]) => `${name} (${qty}x)`)
+      .join(', ');
+
+    const now = new Date();
+    const day = String(now.getDate()).padStart(2, '0');
+    const month = String(now.getMonth() + 1).padStart(2, '0');
+    const orderDate = `${day}/${month}/${now.getFullYear()}`;
+
+    // Payload formatted so Google Apps Script records exactly 1 ROW with full combined total (1,000)
     const payload = {
-      customerName: customerName,
-      phone: customerPhone,
+      customerName: effectiveName,
+      phone: effectivePhone,
+      orderPreference: orderPreference,
+      orderType: orderTypeLabel,
+      tableNumber: orderPreference === 'dine-in' ? dineInTable : '',
+      pickupNote: orderPreference === 'takeaway' ? pickupNote : '',
+      specialInstructions: specialInstructions,
+      deliveryAddress: isDelivery ? effectiveAddress : '',
       items: Object.entries(qtyMap).map(([name, qty]) => ({
         name: name,
-        qty: qty
+        qty: qty,
+        unitPrice: itemDetailsMap[name]?.unitPrice || 0,
+        itemTotal: itemDetailsMap[name]?.itemTotal || 0,
       })),
       deliveryCharge: actualDeliveryCharge,
       itemsTotal: calculatedTotal,
-      totalAmount: finalOrderTotal
+      totalAmount: finalOrderTotal,
+      coustomtotal: finalOrderTotal,  // Matches Column H in Sheet2
+      customtotal: finalOrderTotal,
+      coustomTotal: finalOrderTotal,
+      customTotal: finalOrderTotal,
+      totalUnits: totalUnitsCount,
+      unit: `${totalUnitsCount} Pcs`,
+      itemsSummary: `[${orderTypeLabel}] ${itemsSummaryString}`,
+      orderDate: orderDate
     };
 
-    console.log('Sending payload to sheet:', payload);
+    console.log('Sending single-row payload to sheet:', payload);
 
     try {
       const SCRIPT_URL = 'https://script.google.com/macros/s/AKfycbwuCsQgq4B08VrJVO1xw3PkjjNYSJYwNZqYybUAPutgRdlRcwnRo4sau3w2axopNkr0ZQ/exec';
@@ -495,40 +560,77 @@ export default function App() {
       return `🍽️ *${idx + 1}. ${item.name}*${portionStr}${kgGramStr}\n   ▫️ *Quantity:* ${item.quantity} × ₹${unit}${pieceStr}\n   ▫️ *Subtotal:* ₹${unit * item.quantity}${item.offer ? `\n   ▫️ *Offer:* ${item.offer}` : ''}`;
     }).join('\n\n');
 
-    const freeThreshold = deliveryConfig?.freeDeliveryThreshold ?? 300;
-    const rawDeliveryFee = deliveryConfig?.deliveryFee ?? 40;
-    const isFreeDelivery = totalCartPrice >= freeThreshold;
-    const actualDeliveryCharge = isFreeDelivery ? 0 : rawDeliveryFee;
+    const effectiveName = cartCustomerName.trim() || (userProfile?.fullName ? `${userProfile.fullName} ${userProfile.lastName || ''}`.trim() : 'Customer');
+    const effectivePhone = cartCustomerPhone.trim() || userProfile?.contactNumber || '';
+    const effectiveAddress = cartDeliveryAddress.trim() || userProfile?.address || '';
+
+    const isDelivery = orderPreference === 'delivery';
+    const isDineIn = orderPreference === 'dine-in';
+    const isTakeaway = orderPreference === 'takeaway';
+
+    const rawDeliveryFee = isDelivery ? (deliveryConfig?.deliveryFee ?? 0) : 0;
+    const freeThreshold = isDelivery ? (deliveryConfig?.freeDeliveryThreshold ?? null) : null;
+    const isFreeDelivery = !isDelivery || rawDeliveryFee === 0 || (freeThreshold !== null && totalCartPrice >= freeThreshold);
+    const actualDeliveryCharge = isDelivery ? (isFreeDelivery ? 0 : rawDeliveryFee) : 0;
     const finalTotal = totalCartPrice + actualDeliveryCharge;
     
     let text = `🛍️ *AMAN SWEET — ORDER REQUEST* 🛍️\n`;
     text += `══════════════════════\n`;
     text += `🆔 *Order ID:* #${orderId}\n`;
-    text += `📅 *Date & Time:* ${formattedDate}\n\n`;
+    text += `📅 *Date & Time:* ${formattedDate}\n`;
+    if (isDineIn) {
+      text += `🍽️ *ORDER TYPE:* Dine-In (🪑 ${dineInTable})\n\n`;
+    } else if (isTakeaway) {
+      text += `🛍️ *ORDER TYPE:* Takeaway (Self-Pickup)\n`;
+      if (pickupNote) text += `⏰ *Pickup Expected:* ${pickupNote}\n\n`;
+      else text += `\n`;
+    } else {
+      text += `🚀 *ORDER TYPE:* Home Delivery\n\n`;
+    }
+
     text += `📦 *ORDERED DISHES:*\n`;
     text += `──────────────────────\n`;
     text += `${itemsFormatted}\n\n`;
+
     text += `🧾 *BILL SUMMARY:*\n`;
     text += `──────────────────────\n`;
     text += `💵 *Items Total:* ₹${totalCartPrice}\n`;
-    text += `🚚 *Delivery Charges:* ${isFreeDelivery ? 'FREE 🎉 (Saved ₹' + rawDeliveryFee + ')' : '₹' + actualDeliveryCharge}\n`;
+    if (isDelivery) {
+      const deliveryChargeLine = rawDeliveryFee === 0 
+        ? 'FREE' 
+        : isFreeDelivery 
+          ? `FREE 🎉 (Saved ₹${rawDeliveryFee})` 
+          : `₹${actualDeliveryCharge}`;
+      text += `🚚 *Delivery Charges:* ${deliveryChargeLine}\n`;
+    } else if (isDineIn) {
+      text += `🍽️ *Dine-In Service:* FREE (🪑 ${dineInTable})\n`;
+    } else {
+      text += `🛍️ *Self-Pickup:* FREE\n`;
+    }
     text += `💰 *TOTAL PAYABLE:* *₹${finalTotal}*\n`;
 
-    if (userProfile?.fullName || userProfile?.contactNumber || userProfile?.address) {
+    if (isDineIn) {
+      text += `\n👤 *CUSTOMER & TABLE DETAILS:*\n`;
+      text += `──────────────────────\n`;
+      text += `👤 *Name:* ${effectiveName}\n`;
+      if (effectivePhone) text += `📞 *Phone:* ${effectivePhone}\n`;
+      text += `🪑 *Assigned Table:* ${dineInTable}\n`;
+      if (specialInstructions) text += `📝 *Special Instructions:* ${specialInstructions}\n`;
+    } else if (isTakeaway) {
+      text += `\n👤 *CUSTOMER & PICKUP DETAILS:*\n`;
+      text += `──────────────────────\n`;
+      text += `👤 *Name:* ${effectiveName}\n`;
+      if (effectivePhone) text += `📞 *Phone:* ${effectivePhone}\n`;
+      if (pickupNote) text += `⏰ *Expected Pickup Time:* ${pickupNote}\n`;
+      if (specialInstructions) text += `📝 *Special Instructions:* ${specialInstructions}\n`;
+    } else {
       text += `\n👤 *CUSTOMER DELIVERY DETAILS:*\n`;
       text += `──────────────────────\n`;
-      if (userProfile?.fullName) {
-        text += `👤 *Name:* ${userProfile.fullName} ${userProfile.lastName || ''}`.trim() + `\n`;
-      }
-      if (userProfile?.contactNumber) {
-        text += `📞 *Phone:* ${userProfile.contactNumber}\n`;
-      }
-      if (userProfile?.address) {
-        text += `📍 *Address:* ${userProfile.address}\n`;
-      }
-      if (userProfile?.pinCode) {
-        text += `📮 *Pin Code:* ${userProfile.pinCode}\n`;
-      }
+      text += `👤 *Name:* ${effectiveName}\n`;
+      if (effectivePhone) text += `📞 *Phone:* ${effectivePhone}\n`;
+      if (effectiveAddress) text += `📍 *Delivery Address:* ${effectiveAddress}\n`;
+      if (userProfile?.pinCode) text += `📮 *Pin Code:* ${userProfile.pinCode}\n`;
+      if (specialInstructions) text += `📝 *Special Instructions:* ${specialInstructions}\n`;
     }
 
     text += `\n══════════════════════\n`;
@@ -1128,6 +1230,20 @@ export default function App() {
             isSubmitting={isSubmittingOrder}
             onSubmitDirectOrder={handleDirectOrderSubmit}
             deliveryConfig={deliveryConfig}
+            orderPreference={orderPreference}
+            onOrderPreferenceChange={setOrderPreference}
+            dineInTable={dineInTable}
+            onDineInTableChange={setDineInTable}
+            pickupNote={pickupNote}
+            onPickupNoteChange={setPickupNote}
+            specialInstructions={specialInstructions}
+            onSpecialInstructionsChange={setSpecialInstructions}
+            customerName={cartCustomerName}
+            onCustomerNameChange={setCartCustomerName}
+            customerPhone={cartCustomerPhone}
+            onCustomerPhoneChange={setCartCustomerPhone}
+            deliveryAddress={cartDeliveryAddress}
+            onDeliveryAddressChange={setCartDeliveryAddress}
           />
         )}
 
@@ -1458,8 +1574,51 @@ export default function App() {
                     </button>
                   </div>
                   <p className="text-[10px] text-gray-500">
-                    Checkout / order complete posts <code>&#123; items: [&#123; name, qty &#125;], totalAmount &#125;</code> with header <code>text/plain;charset=utf-8</code> to this Web App.
+                    Checkout / order complete posts <code>&#123; items, totalAmount, coustomtotal &#125;</code> to this Web App.
                   </p>
+
+                  {/* 1-Row Billing Script Helper Card */}
+                  <div className="pt-2 border-t border-teal-200/60 mt-2">
+                    <div className="flex items-center justify-between gap-2">
+                      <div className="flex items-center gap-1.5 text-xs font-bold text-teal-950">
+                        <FileCode size={14} className="text-teal-700" />
+                        <span>1-Row Custom Billing Script</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => setShowScriptCode(!showScriptCode)}
+                          className="text-[11px] font-semibold text-teal-700 hover:text-teal-800 bg-white px-2 py-0.5 rounded border border-teal-200 cursor-pointer"
+                        >
+                          {showScriptCode ? 'Hide Code' : 'View Code'}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(GOOGLE_APPS_SCRIPT_ONE_ROW_CODE);
+                            setCopiedScript(true);
+                            showNotification('1-Row Apps Script Code copied to clipboard!');
+                            setTimeout(() => setCopiedScript(false), 3000);
+                          }}
+                          className="flex items-center gap-1 text-[11px] font-bold text-white bg-teal-700 hover:bg-teal-800 active:scale-95 px-2.5 py-0.5 rounded shadow-xs cursor-pointer transition"
+                        >
+                          {copiedScript ? <Check size={12} /> : <Copy size={12} />}
+                          <span>{copiedScript ? 'Copied!' : 'Copy Code'}</span>
+                        </button>
+                      </div>
+                    </div>
+                    <p className="text-[10px] text-teal-800/80 mt-1">
+                      Is script se har order ka total (e.g. 600 + 400 = 1,000) <strong>Sheet2 ki ek hi row me</strong> Column H (coustomtotal) me add hoga!
+                    </p>
+
+                    {showScriptCode && (
+                      <div className="mt-2 relative">
+                        <pre className="p-2.5 bg-slate-900 text-teal-300 rounded-lg text-[10px] font-mono overflow-x-auto max-h-48 border border-slate-700 leading-relaxed select-all">
+                          {GOOGLE_APPS_SCRIPT_ONE_ROW_CODE}
+                        </pre>
+                      </div>
+                    )}
+                  </div>
                 </div>
 
                 {/* Owner WhatsApp Order Receiving Number Configuration */}

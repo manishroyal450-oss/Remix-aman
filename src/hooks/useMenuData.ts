@@ -5,8 +5,8 @@ import { MenuItem, DEFAULT_BAKERY_ITEMS, DeliveryConfig } from '../data';
 const SHEET_ID = '1otN1s4qs_QfF7jfK4uy-uTFOKhflZUXao7vTLrzQBK8';
 const SHEET_NAME = 'Restaurant Menu';
 const CSV_URL = `https://docs.google.com/spreadsheets/d/${SHEET_ID}/gviz/tq?tqx=out:csv&sheet=${encodeURIComponent(SHEET_NAME)}`;
-const CACHE_MENU_KEY = 'aman_sweet_menu_data_cache_v2';
-const CACHE_DELIVERY_KEY = 'aman_sweet_delivery_config_cache_v2';
+const CACHE_MENU_KEY = 'aman_sweet_menu_data_cache_v3';
+const CACHE_DELIVERY_KEY = 'aman_sweet_delivery_config_cache_v3';
 
 const getInitialCachedMenu = (): MenuItem[] => {
   try {
@@ -28,9 +28,9 @@ const getInitialCachedDelivery = (): DeliveryConfig => {
     }
   } catch (e) {}
   return {
-    deliveryFee: 40,
-    deliveryDescription: 'If you take 300 rupay item , you can take free delivery',
-    freeDeliveryThreshold: 300,
+    deliveryFee: 0,
+    deliveryDescription: '',
+    freeDeliveryThreshold: null,
   };
 };
 
@@ -226,42 +226,51 @@ export function useMenuData() {
       );
       const colIndexDeliveryDesc = rColIndex !== -1 ? rColIndex : 17;
 
-      let parsedFee = 40;
-      let parsedDesc = 'If you take 300 rupay item , you can take free delivery';
+      let parsedFee = 0;
+      let parsedDesc = '';
+      let hasDeliveryConfig = false;
 
       for (let r = 1; r < rows.length; r++) {
         const row = rows[r];
         const valQ = row[colIndexDeliveryValue] ? row[colIndexDeliveryValue].trim() : '';
         const valR = row[colIndexDeliveryDesc] ? row[colIndexDeliveryDesc].trim() : '';
 
-        if (valQ) {
+        if (valQ !== '') {
           const num = parseFloat(valQ.replace(/[^\d.]/g, ''));
           if (!isNaN(num)) {
             parsedFee = num;
+            hasDeliveryConfig = true;
           }
         }
-        if (valR) {
-          parsedDesc = valR;
+        if (valR !== '') {
+          if (valR === '0' || valR === '-' || /^none$/i.test(valR) || /^null$/i.test(valR)) {
+            parsedDesc = '';
+          } else {
+            parsedDesc = valR;
+          }
+          hasDeliveryConfig = true;
         }
-        if (valQ || valR) break;
+        if (hasDeliveryConfig) break;
       }
 
       // Check if description has a threshold, e.g. "300 rupay" or "300"
       let threshold: number | null = null;
-      const thresholdMatch = parsedDesc.match(/(\d+)\s*(?:rupay|rupee|rs|inr|₹)/i);
-      if (thresholdMatch) {
-        threshold = parseFloat(thresholdMatch[1]);
-      } else {
-        const genericMatch = parsedDesc.match(/(?:above|over|take|orders?\s+above|min|minimum)\s*(\d{2,5})/i);
-        if (genericMatch) {
-          threshold = parseFloat(genericMatch[1]);
+      if (parsedDesc) {
+        const thresholdMatch = parsedDesc.match(/(\d+)\s*(?:rupay|rupee|rs|inr|₹)/i);
+        if (thresholdMatch) {
+          threshold = parseFloat(thresholdMatch[1]);
+        } else {
+          const genericMatch = parsedDesc.match(/(?:above|over|take|orders?\s+above|min|minimum)\s*(\d{2,5})/i);
+          if (genericMatch) {
+            threshold = parseFloat(genericMatch[1]);
+          }
         }
       }
 
       const newDeliveryConfig: DeliveryConfig = {
         deliveryFee: parsedFee,
         deliveryDescription: parsedDesc,
-        freeDeliveryThreshold: threshold ?? 300,
+        freeDeliveryThreshold: threshold,
       };
 
       setDeliveryConfig(newDeliveryConfig);

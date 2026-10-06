@@ -1,5 +1,23 @@
+import { useState } from 'react';
 import { CartItem, UserProfile, formatPieceUnit, getItemUnitPrice, DeliveryConfig } from '../data';
-import { ShoppingCart, Trash2, Plus, Minus, MessageCircle, User, ArrowRight } from 'lucide-react';
+import { 
+  ShoppingCart, Trash2, Plus, Minus, MessageCircle, User, ArrowRight,
+  UtensilsCrossed, ChevronDown, Check
+} from 'lucide-react';
+
+export type OrderPreference = 'delivery' | 'dine-in' | 'takeaway';
+
+export const DINE_IN_TABLES = [
+  'Table 2',
+  'Table 3',
+  'Table 4',
+  'Table 5',
+  'Table 6',
+  'Table 7',
+  'Table 8',
+  'Table 9',
+  'Table 10',
+];
 
 interface CartSectionProps {
   cart: CartItem[];
@@ -18,6 +36,22 @@ interface CartSectionProps {
   isSubmitting?: boolean;
   onSubmitDirectOrder?: () => void;
   deliveryConfig?: DeliveryConfig;
+
+  // Order Preference & Customer Information Props
+  orderPreference?: OrderPreference;
+  onOrderPreferenceChange?: (pref: OrderPreference) => void;
+  dineInTable?: string;
+  onDineInTableChange?: (table: string) => void;
+  pickupNote?: string;
+  onPickupNoteChange?: (note: string) => void;
+  specialInstructions?: string;
+  onSpecialInstructionsChange?: (inst: string) => void;
+  customerName?: string;
+  onCustomerNameChange?: (name: string) => void;
+  customerPhone?: string;
+  onCustomerPhoneChange?: (phone: string) => void;
+  deliveryAddress?: string;
+  onDeliveryAddressChange?: (addr: string) => void;
 }
 
 export default function CartSection({
@@ -35,13 +69,42 @@ export default function CartSection({
   isSubmitting = false,
   onSubmitDirectOrder,
   deliveryConfig,
+  orderPreference = 'delivery',
+  onOrderPreferenceChange,
+  dineInTable = 'Table 2',
+  onDineInTableChange,
+  pickupNote = '',
+  onPickupNoteChange,
+  specialInstructions = '',
+  onSpecialInstructionsChange,
+  customerName = '',
+  onCustomerNameChange,
+  customerPhone = '',
+  onCustomerPhoneChange,
+  deliveryAddress = '',
+  onDeliveryAddressChange,
 }: CartSectionProps) {
-  const freeThreshold = deliveryConfig?.freeDeliveryThreshold ?? 300;
-  const rawDeliveryFee = deliveryConfig?.deliveryFee ?? 40;
-  const isFreeDelivery = totalCartPrice >= freeThreshold;
-  const actualDeliveryCharge = isFreeDelivery ? 0 : rawDeliveryFee;
+  const isDelivery = orderPreference === 'delivery';
+  const isDineIn = orderPreference === 'dine-in';
+  const isTakeaway = orderPreference === 'takeaway';
+
+  // Delivery fee applies only when Delivery mode is chosen
+  const rawDeliveryFee = isDelivery ? (deliveryConfig?.deliveryFee ?? 0) : 0;
+  const freeThreshold = isDelivery ? (deliveryConfig?.freeDeliveryThreshold ?? null) : null;
+  const isFreeDelivery = !isDelivery || rawDeliveryFee === 0 || (freeThreshold !== null && totalCartPrice >= freeThreshold);
+  const actualDeliveryCharge = isDelivery ? (isFreeDelivery ? 0 : rawDeliveryFee) : 0;
   const finalTotalAmount = totalCartPrice + actualDeliveryCharge;
-  const deliveryDescription = deliveryConfig?.deliveryDescription || 'If you take 300 rupay item , you can take free delivery';
+  
+  const rawDesc = deliveryConfig?.deliveryDescription ? deliveryConfig.deliveryDescription.trim() : '';
+  const hasValidDescription = isDelivery && Boolean(
+    rawDesc && 
+    rawDesc !== '0' && 
+    rawDesc !== '-' && 
+    !/^none$/i.test(rawDesc) && 
+    !/^null$/i.test(rawDesc)
+  );
+
+  const effectiveCustomerName = customerName || (userProfile?.fullName ? `${userProfile.fullName} ${userProfile.lastName || ''}`.trim() : '');
 
   return (
     <div className="max-w-xl mx-auto px-4 py-6">
@@ -56,7 +119,7 @@ export default function CartSection({
         {cart.length > 0 && (
           <button
             onClick={clearCart}
-            className="flex items-center gap-1.5 text-xs font-semibold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition"
+            className="flex items-center gap-1.5 text-xs font-semibold text-red-600 hover:text-red-700 bg-red-50 hover:bg-red-100 px-3 py-1.5 rounded-lg transition cursor-pointer"
           >
             <Trash2 size={14} />
             <span>Clear Cart</span>
@@ -75,7 +138,7 @@ export default function CartSection({
           </p>
           <button
             onClick={onGoToHome}
-            className="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold px-6 py-2.5 rounded-full shadow-sm transition"
+            className="inline-flex items-center gap-2 bg-teal-600 hover:bg-teal-700 text-white text-sm font-semibold px-6 py-2.5 rounded-full shadow-sm transition cursor-pointer"
           >
             <span>Explore Menu</span>
             <ArrowRight size={16} />
@@ -83,40 +146,197 @@ export default function CartSection({
         </div>
       ) : (
         <div className="space-y-4">
-          {/* Customer Profile Banner if exists */}
-          {userProfile ? (
-            <div className="bg-white rounded-xl p-3.5 border border-teal-100 shadow-sm flex items-center justify-between">
-              <div className="flex items-center gap-2.5 text-xs text-gray-700">
-                <div className="w-7 h-7 rounded-full bg-teal-50 text-teal-700 flex items-center justify-center font-bold">
-                  {userProfile.fullName.charAt(0)}
-                </div>
-                <div>
-                  <p className="font-semibold text-gray-900">{userProfile.fullName} {userProfile.lastName}</p>
-                  <p className="text-gray-500 text-[11px] truncate max-w-[200px]">{userProfile.address}</p>
-                </div>
-              </div>
-              <button 
-                onClick={onGoToProfile}
-                className="text-[11px] font-semibold text-teal-600 hover:text-teal-700"
+          {/* 1. ORDER PREFERENCE CARD (Delivery, Dine-In, Takeaway) */}
+          <div className="bg-white rounded-3xl p-5 border border-gray-200/80 shadow-xs">
+            <h3 className="text-base font-bold text-gray-900 mb-3.5">
+              Order Preference
+            </h3>
+            <div className="grid grid-cols-3 gap-2.5">
+              {/* Delivery Button */}
+              <button
+                type="button"
+                onClick={() => onOrderPreferenceChange && onOrderPreferenceChange('delivery')}
+                className={`py-3.5 px-2 rounded-2xl flex flex-col items-center justify-center gap-1.5 transition text-xs font-bold cursor-pointer ${
+                  isDelivery
+                    ? 'bg-rose-600 text-white shadow-md shadow-rose-200 ring-2 ring-rose-600 ring-offset-1'
+                    : 'bg-white hover:bg-gray-50 border border-gray-200 text-gray-700'
+                }`}
               >
-                Change
+                <span className="text-xl leading-none">🚀</span>
+                <span>Delivery</span>
+              </button>
+
+              {/* Dine-In Button */}
+              <button
+                type="button"
+                onClick={() => onOrderPreferenceChange && onOrderPreferenceChange('dine-in')}
+                className={`py-3.5 px-2 rounded-2xl flex flex-col items-center justify-center gap-1.5 transition text-xs font-bold cursor-pointer ${
+                  isDineIn
+                    ? 'bg-rose-600 text-white shadow-md shadow-rose-200 ring-2 ring-rose-600 ring-offset-1'
+                    : 'bg-white hover:bg-gray-50 border border-gray-200 text-gray-700'
+                }`}
+              >
+                <span className="text-xl leading-none">🍽️</span>
+                <span>Dine-In</span>
+              </button>
+
+              {/* Takeaway Button */}
+              <button
+                type="button"
+                onClick={() => onOrderPreferenceChange && onOrderPreferenceChange('takeaway')}
+                className={`py-3.5 px-2 rounded-2xl flex flex-col items-center justify-center gap-1.5 transition text-xs font-bold cursor-pointer ${
+                  isTakeaway
+                    ? 'bg-rose-600 text-white shadow-md shadow-rose-200 ring-2 ring-rose-600 ring-offset-1'
+                    : 'bg-white hover:bg-gray-50 border border-gray-200 text-gray-700'
+                }`}
+              >
+                <span className="text-xl leading-none">🛍️</span>
+                <span>Takeaway</span>
               </button>
             </div>
-          ) : (
-            <div 
-              onClick={onGoToProfile}
-              className="bg-amber-50 border border-amber-200 rounded-xl p-3 flex items-center justify-between cursor-pointer hover:bg-amber-100/70 transition"
-            >
-              <div className="flex items-center gap-2 text-xs text-amber-900">
-                <User size={16} className="text-amber-600" />
-                <span>Add delivery address in <strong>Profile</strong> for faster checkout</span>
-              </div>
-              <ArrowRight size={14} className="text-amber-700" />
+          </div>
+
+          {/* 2. CUSTOMER INFORMATION CARD */}
+          <div className="bg-white rounded-3xl p-5 border border-gray-200/80 shadow-xs space-y-3.5">
+            <div className="flex items-center justify-between">
+              <h3 className="text-base font-bold text-gray-900">
+                Customer Information
+              </h3>
+              {effectiveCustomerName ? (
+                <span className="text-[11px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-3 py-1 rounded-full">
+                  Logged in as {effectiveCustomerName.split(' ')[0]}
+                </span>
+              ) : (
+                <span className="text-[11px] font-semibold text-gray-500 bg-gray-100 border border-gray-200 px-2.5 py-0.5 rounded-full">
+                  Customer Details
+                </span>
+              )}
             </div>
-          )}
+
+            {/* Name Input */}
+            <div>
+              <input
+                type="text"
+                value={customerName}
+                onChange={(e) => onCustomerNameChange && onCustomerNameChange(e.target.value)}
+                placeholder="Your Name"
+                className="w-full px-3.5 py-3 bg-gray-50/70 border border-gray-200/90 rounded-xl text-xs text-gray-800 placeholder:text-gray-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition"
+              />
+            </div>
+
+            {/* Mobile Number Input */}
+            <div>
+              <input
+                type="tel"
+                value={customerPhone}
+                onChange={(e) => onCustomerPhoneChange && onCustomerPhoneChange(e.target.value)}
+                placeholder="Mobile Number"
+                className="w-full px-3.5 py-3 bg-gray-50/70 border border-gray-200/90 rounded-xl text-xs text-gray-800 placeholder:text-gray-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition"
+              />
+            </div>
+
+            {/* Dynamic Fields for DINE-IN */}
+            {isDineIn && (
+              <div className="bg-rose-50/40 border border-rose-200/80 rounded-2xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 text-sm font-bold text-gray-900">
+                    <UtensilsCrossed size={16} className="text-rose-600" />
+                    <span>Select Dine-In Table</span>
+                  </div>
+                  <span className="text-[11px] font-bold text-rose-700 bg-rose-100 px-2.5 py-0.5 rounded-full">
+                    9 Tables
+                  </span>
+                </div>
+
+                {/* Dropdown Select Box */}
+                <div className="relative">
+                  <select
+                    value={dineInTable}
+                    onChange={(e) => onDineInTableChange && onDineInTableChange(e.target.value)}
+                    className="w-full appearance-none px-3.5 py-2.5 bg-white border border-rose-200 rounded-xl text-xs font-semibold text-gray-800 focus:outline-none focus:ring-2 focus:ring-rose-400/30 cursor-pointer shadow-2xs pr-9"
+                  >
+                    <option value="Table 1">🪑 Table 1</option>
+                    {DINE_IN_TABLES.map((table) => (
+                      <option key={table} value={table}>
+                        🪑 {table}
+                      </option>
+                    ))}
+                  </select>
+                  <ChevronDown size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 pointer-events-none" />
+                </div>
+
+                {/* Direct Tap Pills */}
+                <div className="space-y-2 pt-1">
+                  <p className="text-[11px] text-gray-500 font-medium">
+                    Or tap your table directly:
+                  </p>
+                  <div className="grid grid-cols-3 gap-2">
+                    {DINE_IN_TABLES.map((table) => {
+                      const isSelected = dineInTable === table;
+                      return (
+                        <button
+                          key={table}
+                          type="button"
+                          onClick={() => onDineInTableChange && onDineInTableChange(table)}
+                          className={`py-2 px-2 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition cursor-pointer ${
+                            isSelected
+                              ? 'bg-rose-600 text-white font-bold shadow-xs border border-rose-600'
+                              : 'bg-white hover:bg-rose-50/50 border border-gray-200 text-gray-700'
+                          }`}
+                        >
+                          <span>🪑</span>
+                          <span>{table}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Dynamic Fields for TAKEAWAY */}
+            {isTakeaway && (
+              <div>
+                <input
+                  type="text"
+                  value={pickupNote}
+                  onChange={(e) => onPickupNoteChange && onPickupNoteChange(e.target.value)}
+                  placeholder="Pickup Note / Expected Time"
+                  className="w-full px-3.5 py-3 bg-white border border-rose-400 ring-2 ring-rose-100 rounded-xl text-xs text-gray-800 placeholder:text-gray-400 focus:outline-none focus:border-rose-500 transition"
+                />
+              </div>
+            )}
+
+            {/* Dynamic Fields for DELIVERY */}
+            {isDelivery && (
+              <div>
+                <input
+                  type="text"
+                  value={deliveryAddress}
+                  onChange={(e) => onDeliveryAddressChange && onDeliveryAddressChange(e.target.value)}
+                  placeholder="Complete Delivery Address (House No, Street, Area)"
+                  className="w-full px-3.5 py-3 bg-gray-50/70 border border-gray-200/90 rounded-xl text-xs text-gray-800 placeholder:text-gray-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition"
+                />
+              </div>
+            )}
+
+            {/* Special instructions (Available for Delivery, Dine-In, Takeaway) */}
+            <div>
+              <input
+                type="text"
+                value={specialInstructions}
+                onChange={(e) => onSpecialInstructionsChange && onSpecialInstructionsChange(e.target.value)}
+                placeholder="Special instructions (e.g. extra cheese, less spicy)"
+                className="w-full px-3.5 py-3 bg-gray-50/70 border border-gray-200/90 rounded-xl text-xs text-gray-800 placeholder:text-gray-400 focus:bg-white focus:outline-none focus:ring-2 focus:ring-rose-500/20 focus:border-rose-500 transition"
+              />
+            </div>
+          </div>
 
           {/* Cart items list */}
           <div className="bg-white rounded-2xl p-4 shadow-sm border border-gray-100 divide-y divide-gray-100">
+            <h4 className="text-xs font-bold text-gray-400 uppercase tracking-wider mb-2">
+              Items in Cart ({cart.length})
+            </h4>
             {cart.map(item => {
               const unitPrice = getItemUnitPrice(item, item.selectedPortion);
               const itemTotal = unitPrice * item.quantity;
@@ -157,7 +377,7 @@ export default function CartSection({
                     <div className="flex items-center border border-gray-200 rounded-lg bg-gray-50">
                       <button
                         onClick={() => decreaseQuantity(item.id)}
-                        className="p-1.5 text-gray-600 hover:text-teal-700 transition"
+                        className="p-1.5 text-gray-600 hover:text-teal-700 transition cursor-pointer"
                         title="Decrease"
                       >
                         <Minus size={14} />
@@ -167,7 +387,7 @@ export default function CartSection({
                       </span>
                       <button
                         onClick={() => addToCart(item)}
-                        className="p-1.5 text-gray-600 hover:text-teal-700 transition"
+                        className="p-1.5 text-gray-600 hover:text-teal-700 transition cursor-pointer"
                         title="Increase"
                       >
                         <Plus size={14} />
@@ -180,7 +400,7 @@ export default function CartSection({
 
                     <button
                       onClick={() => removeFromCart(item.id)}
-                      className="p-1.5 text-gray-400 hover:text-red-500 transition"
+                      className="p-1.5 text-gray-400 hover:text-red-500 transition cursor-pointer"
                       title="Remove"
                     >
                       <Trash2 size={16} />
@@ -199,8 +419,16 @@ export default function CartSection({
             </div>
 
             <div className="flex justify-between text-gray-600 text-xs items-center">
-              <span>Estimated Delivery</span>
-              {isFreeDelivery ? (
+              <span>
+                {isDineIn 
+                  ? `Dine-In Service (${dineInTable})` 
+                  : isTakeaway 
+                    ? 'Self-Pickup' 
+                    : 'Estimated Delivery'}
+              </span>
+              {!isDelivery ? (
+                <span className="text-emerald-700 font-bold bg-emerald-50 px-2 py-0.5 rounded-md text-xs">Free</span>
+              ) : isFreeDelivery ? (
                 <div className="flex items-center gap-1.5">
                   {rawDeliveryFee > 0 && (
                     <span className="line-through text-gray-400 text-[11px]">₹{rawDeliveryFee}</span>
@@ -212,8 +440,8 @@ export default function CartSection({
               )}
             </div>
 
-            {/* Delivery Description paragraph right below Estimated Delivery */}
-            {deliveryDescription && (
+            {/* Delivery Description paragraph right below Estimated Delivery - ONLY if sheet has description & Delivery mode */}
+            {hasValidDescription && (
               <div className={`p-2.5 rounded-xl border text-xs flex items-start gap-2.5 transition-all ${
                 isFreeDelivery
                   ? 'bg-emerald-50/70 border-emerald-200/80 text-emerald-900'
@@ -222,9 +450,9 @@ export default function CartSection({
                 <span className="text-base shrink-0 leading-none">🚚</span>
                 <div className="flex-1">
                   <p className="font-medium leading-relaxed">
-                    {deliveryDescription}
+                    {rawDesc}
                   </p>
-                  {!isFreeDelivery && freeThreshold > totalCartPrice && (
+                  {!isFreeDelivery && freeThreshold !== null && freeThreshold > totalCartPrice && (
                     <p className="mt-1 font-bold text-[11px] text-teal-800">
                       Add ₹{freeThreshold - totalCartPrice} more to get FREE Delivery!
                     </p>
